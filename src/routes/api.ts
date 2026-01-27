@@ -1,26 +1,11 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
-import type { Process } from '@cloudflare/sandbox';
 import { createAccessMiddleware } from '../auth';
-import { ensureClawdbotGateway, findExistingClawdbotProcess, mountR2Storage, syncToR2 } from '../gateway';
+import { ensureClawdbotGateway, findExistingClawdbotProcess, mountR2Storage, syncToR2, waitForProcess } from '../gateway';
 import { R2_MOUNT_PATH } from '../config';
 
 // CLI commands can take 10-15 seconds to complete due to WebSocket connection overhead
 const CLI_TIMEOUT_MS = 20000;
-const CLI_POLL_INTERVAL_MS = 500;
-
-/**
- * Wait for a CLI process to complete
- */
-async function waitForProcess(proc: Process, timeoutMs: number = CLI_TIMEOUT_MS): Promise<void> {
-  const maxAttempts = Math.ceil(timeoutMs / CLI_POLL_INTERVAL_MS);
-  let attempts = 0;
-  while (attempts < maxAttempts) {
-    await new Promise(r => setTimeout(r, CLI_POLL_INTERVAL_MS));
-    if (proc.status !== 'running') break;
-    attempts++;
-  }
-}
 
 /**
  * API routes
@@ -72,7 +57,7 @@ admin.get('/devices', async (c) => {
     // Run clawdbot CLI to list devices
     // Must specify --url to connect to the gateway running in the same container
     const proc = await sandbox.startProcess('clawdbot devices list --json --url ws://localhost:18789');
-    await waitForProcess(proc);
+    await waitForProcess(proc, CLI_TIMEOUT_MS);
 
     const logs = await proc.getLogs();
     const stdout = logs.stdout || '';
@@ -124,7 +109,7 @@ admin.post('/devices/:requestId/approve', async (c) => {
 
     // Run clawdbot CLI to approve the device
     const proc = await sandbox.startProcess(`clawdbot devices approve ${requestId} --url ws://localhost:18789`);
-    await waitForProcess(proc);
+    await waitForProcess(proc, CLI_TIMEOUT_MS);
 
     const logs = await proc.getLogs();
     const stdout = logs.stdout || '';
@@ -156,7 +141,7 @@ admin.post('/devices/approve-all', async (c) => {
 
     // First, get the list of pending devices
     const listProc = await sandbox.startProcess('clawdbot devices list --json --url ws://localhost:18789');
-    await waitForProcess(listProc);
+    await waitForProcess(listProc, CLI_TIMEOUT_MS);
 
     const listLogs = await listProc.getLogs();
     const stdout = listLogs.stdout || '';
@@ -183,7 +168,7 @@ admin.post('/devices/approve-all', async (c) => {
     for (const device of pending) {
       try {
         const approveProc = await sandbox.startProcess(`clawdbot devices approve ${device.requestId} --url ws://localhost:18789`);
-        await waitForProcess(approveProc);
+        await waitForProcess(approveProc, CLI_TIMEOUT_MS);
 
         const approveLogs = await approveProc.getLogs();
         const success = approveLogs.stdout?.toLowerCase().includes('approved') || approveProc.exitCode === 0;

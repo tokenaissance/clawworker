@@ -25,7 +25,8 @@ src/
 │   ├── process.ts    # Process lifecycle (find, start)
 │   ├── env.ts        # Environment variable building
 │   ├── r2.ts         # R2 bucket mounting
-│   └── sync.ts       # R2 backup sync logic
+│   ├── sync.ts       # R2 backup sync logic
+│   └── utils.ts      # Shared utilities (waitForProcess)
 ├── routes/           # API route handlers
 │   ├── api.ts        # /api/* endpoints (devices, gateway)
 │   ├── admin.ts      # /_admin/* static file serving

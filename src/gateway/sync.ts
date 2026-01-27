@@ -2,25 +2,13 @@ import type { Sandbox } from '@cloudflare/sandbox';
 import type { ClawdbotEnv } from '../types';
 import { R2_MOUNT_PATH } from '../config';
 import { mountR2Storage } from './r2';
+import { waitForProcess } from './utils';
 
 export interface SyncResult {
   success: boolean;
   lastSync?: string;
   error?: string;
   details?: string;
-}
-
-/**
- * Wait for a process to complete
- */
-async function waitForProcess(proc: { status: string }, timeoutMs: number): Promise<void> {
-  const pollInterval = 500;
-  const maxAttempts = Math.ceil(timeoutMs / pollInterval);
-  let attempts = 0;
-  while (proc.status === 'running' && attempts < maxAttempts) {
-    await new Promise(r => setTimeout(r, pollInterval));
-    attempts++;
-  }
 }
 
 /**
