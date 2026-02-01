@@ -50,33 +50,35 @@ npx wrangler secret put ANTHROPIC_API_KEY
 # npx wrangler secret put AI_GATEWAY_API_KEY
 # npx wrangler secret put AI_GATEWAY_BASE_URL
 
-# Generate and set a gateway token (required for remote access)
-# Save this token - you'll need it to access the Control UI
-export MOLTBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)
-echo "Your gateway token: $MOLTBOT_GATEWAY_TOKEN"
-echo "$MOLTBOT_GATEWAY_TOKEN" | npx wrangler secret put MOLTBOT_GATEWAY_TOKEN
+# Optional: Generate and set a gateway token for additional authentication
+# If not set, the gateway will rely solely on device pairing (more secure)
+# export MOLTBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)
+# echo "Your gateway token: $MOLTBOT_GATEWAY_TOKEN"
+# echo "$MOLTBOT_GATEWAY_TOKEN" | npx wrangler secret put MOLTBOT_GATEWAY_TOKEN
 
 # Deploy
 npm run deploy
 ```
 
-After deploying, open the Control UI with your token:
+After deploying, open the Control UI:
 
 ```
-https://your-worker.workers.dev/?token=YOUR_GATEWAY_TOKEN
+https://your-worker.workers.dev/
 ```
 
-Replace `your-worker` with your actual worker subdomain and `YOUR_GATEWAY_TOKEN` with the token you generated above.
+Replace `your-worker` with your actual worker subdomain.
 
 **Note:** The first request may take 1-2 minutes while the container starts.
 
 > **Important:** You will not be able to use the Control UI until you complete the following steps. You MUST:
-> 1. [Set up Cloudflare Access](#setting-up-the-admin-ui) to protect the admin UI
+> 1. [Set up Cloudflare Access](#setting-up-the-admin-ui-with-cloudflare-access) to protect the admin UI
 > 2. [Pair your device](#device-pairing) via the admin UI at `/_admin/`
+
+If you set a gateway token, you'll also need to include it: `?token=YOUR_GATEWAY_TOKEN`
 
 You'll also likely want to [enable R2 storage](#persistent-storage-r2) so your paired devices and conversation history persist across container restarts (optional but recommended).
 
-## Setting Up the Admin UI
+## Setting Up the Admin UI with Cloudflare Access
 
 To use the admin UI at `/_admin/` for device management, you need to:
 1. Enable Cloudflare Access on your worker
@@ -151,16 +153,16 @@ By default, moltbot uses **device pairing** for authentication. When a new devic
 
 This is the most secure option as it requires explicit approval for each device.
 
-### Gateway Token (Required)
+### Gateway Token (Optional)
 
-A gateway token is required to access the Control UI when hosted remotely. Pass it as a query parameter:
+You can optionally set a gateway token to add an extra authentication layer when accessing the Control UI. If set, pass it as a query parameter:
 
 ```
 https://your-worker.workers.dev/?token=YOUR_TOKEN
 wss://your-worker.workers.dev/ws?token=YOUR_TOKEN
 ```
 
-**Note:** Even with a valid token, new devices still require approval via the admin UI at `/_admin/` (see Device Pairing above).
+**Note:** If no token is set, the gateway relies entirely on device pairing (all devices must be approved via `/_admin/`). This is actually more secure as it requires explicit approval for every connection.
 
 For local development only, set `DEV_MODE=true` in `.dev.vars` to skip Cloudflare Access authentication and enable `allowInsecureAuth` (bypasses device pairing entirely).
 
@@ -366,7 +368,7 @@ The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 | `OPENAI_API_KEY` | No | OpenAI API key (alternative provider) |
 | `CF_ACCESS_TEAM_DOMAIN` | Yes* | Cloudflare Access team domain (required for admin UI) |
 | `CF_ACCESS_AUD` | Yes* | Cloudflare Access application audience (required for admin UI) |
-| `MOLTBOT_GATEWAY_TOKEN` | Yes | Gateway token for authentication (pass via `?token=` query param) |
+| `MOLTBOT_GATEWAY_TOKEN` | No | Optional gateway token for additional authentication (pass via `?token=` query param). If not set, relies on device pairing only. |
 | `DEV_MODE` | No | Set to `true` to skip CF Access auth + device pairing (local dev only) |
 | `DEBUG_ROUTES` | No | Set to `true` to enable `/debug/*` routes |
 | `SANDBOX_SLEEP_AFTER` | No | Container sleep timeout: `never` (default) or duration like `10m`, `1h` |
@@ -386,13 +388,20 @@ The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 
 ### Authentication Layers
 
-OpenClaw in Cloudflare Sandbox uses multiple authentication layers:
+OpenClaw in Cloudflare Sandbox uses the following authentication approach:
 
-1. **Cloudflare Access** - Protects admin routes (`/_admin/`, `/api/*`, `/debug/*`). Only authenticated users can manage devices.
+1. **Cloudflare Access (Required for Admin)** - Protects admin routes (`/_admin/`, `/api/*`, `/debug/*`). Only authenticated Cloudflare Access users can manage devices. This ensures consistent security across development and production environments.
 
-2. **Gateway Token** - Required to access the Control UI. Pass via `?token=` query parameter. Keep this secret.
+2. **Device Pairing (Required for All)** - Each device (browser, CLI, chat platform DM) must be explicitly approved via the admin UI at `/_admin/` before it can interact with the assistant. This is required for all connections.
 
-3. **Device Pairing** - Each device (browser, CLI, chat platform DM) must be explicitly approved via the admin UI before it can interact with the assistant. This is the default "pairing" DM policy.
+3. **Gateway Token (Optional)** - If configured, adds token-based authentication. Pass via `?token=` query parameter.
+
+**Security Model:**
+- Control UI at `/` → Open access, but requires device pairing approval
+- Admin UI at `/_admin/` → Requires Cloudflare Access + device pairing
+- Cloudflare Access → Required for admin routes (enforced in production and development)
+- Gateway Token → Optional additional layer
+- Device Pairing → Always required for all devices
 
 ## Troubleshooting
 

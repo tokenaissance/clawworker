@@ -9,13 +9,15 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Enable debug routes at /debug/* (optional)
 # DEBUG_ROUTES=true
 
-# Optional - set a fixed token instead of auto-generated
-MOLTBOT_GATEWAY_TOKEN=dev-token-change-in-prod
+# Optional - set a gateway token for additional authentication
+# If not set, gateway relies solely on device pairing (more secure)
+# MOLTBOT_GATEWAY_TOKEN=dev-token-change-in-prod
 
-# Cloudflare Access configuration for /_admin and /api routes
-# Required for admin UI and device pairing API in production
-# CF_ACCESS_TEAM_DOMAIN=myteam.cloudflareaccess.com
-# CF_ACCESS_AUD=your-application-audience-tag
+# Cloudflare Access configuration for /_admin and /api routes (required in production)
+# Required for admin UI (device pairing API)
+# In local dev with DEV_MODE=true, CF Access is bypassed
+CF_ACCESS_TEAM_DOMAIN=myteam.cloudflareaccess.com
+CF_ACCESS_AUD=your-application-audience-tag
 
 # Optional chat channels
 # TELEGRAM_BOT_TOKEN=optional

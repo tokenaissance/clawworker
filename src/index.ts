@@ -55,10 +55,7 @@ export { Sandbox };
 function validateRequiredEnv(env: MoltbotEnv): string[] {
   const missing: string[] = [];
 
-  if (!env.MOLTBOT_GATEWAY_TOKEN) {
-    missing.push('MOLTBOT_GATEWAY_TOKEN');
-  }
-
+  // Cloudflare Access is required for admin UI
   if (!env.CF_ACCESS_TEAM_DOMAIN) {
     missing.push('CF_ACCESS_TEAM_DOMAIN');
   }
@@ -181,15 +178,62 @@ app.use('*', async (c, next) => {
   return next();
 });
 
-// Middleware: Cloudflare Access authentication for protected routes
-app.use('*', async (c, next) => {
-  // Determine response type based on Accept header
+// =============================================================================
+// PROTECTED ROUTES: Cloudflare Access authentication
+// =============================================================================
+
+// Middleware: Cloudflare Access for admin routes (required)
+app.use('/_admin/*', async (c, next) => {
+  // Skip in dev mode
+  if (c.env.DEV_MODE === 'true') {
+    return next();
+  }
+
+  // Apply CF Access middleware (required for admin UI)
   const acceptsHtml = c.req.header('Accept')?.includes('text/html');
-  const middleware = createAccessMiddleware({ 
+  const middleware = createAccessMiddleware({
     type: acceptsHtml ? 'html' : 'json',
-    redirectOnMissing: acceptsHtml 
+    redirectOnMissing: acceptsHtml
   });
-  
+
+  return middleware(c, next);
+});
+
+// Middleware: Cloudflare Access for API routes (required)
+app.use('/api/*', async (c, next) => {
+  // Skip in dev mode
+  if (c.env.DEV_MODE === 'true') {
+    return next();
+  }
+
+  // Apply CF Access middleware (required for device pairing API)
+  const middleware = createAccessMiddleware({
+    type: 'json',
+    redirectOnMissing: false
+  });
+
+  return middleware(c, next);
+});
+
+// Middleware: Cloudflare Access for debug routes (optional)
+app.use('/debug/*', async (c, next) => {
+  // Skip in dev mode
+  if (c.env.DEV_MODE === 'true') {
+    return next();
+  }
+
+  // Skip if CF Access is not configured (optional)
+  if (!c.env.CF_ACCESS_TEAM_DOMAIN || !c.env.CF_ACCESS_AUD) {
+    console.log('[AUTH] Cloudflare Access not configured for /debug/*, skipping CF Access auth');
+    return next();
+  }
+
+  // Apply CF Access middleware
+  const middleware = createAccessMiddleware({
+    type: 'json',
+    redirectOnMissing: false
+  });
+
   return middleware(c, next);
 });
 
@@ -199,7 +243,7 @@ app.route('/api', api);
 // Mount Admin UI routes (protected by Cloudflare Access)
 app.route('/_admin', adminUi);
 
-// Mount debug routes (protected by Cloudflare Access, only when DEBUG_ROUTES is enabled)
+// Mount debug routes (protected by optional Cloudflare Access, only when DEBUG_ROUTES is enabled)
 app.use('/debug/*', async (c, next) => {
   if (c.env.DEBUG_ROUTES !== 'true') {
     return c.json({ error: 'Debug routes are disabled' }, 404);
