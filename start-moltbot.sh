@@ -17,12 +17,22 @@ fi
 
 # Paths (clawdbot paths are used internally - upstream hasn't renamed yet)
 CONFIG_DIR="/root/.clawdbot"
-CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
 TEMPLATE_DIR="/root/.clawdbot-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/moltbot.json.template"
 BACKUP_DIR="/data/moltbot"
 
+# Config version for file isolation
+# Format: {git_tag}_{timestamp}, e.g., v1.0.0_1738425600
+# Falls back to "unknown" if not set (should never happen in production due to fail-fast build)
+CONFIG_VERSION="${CONFIG_VERSION:-unknown}"
+
+# Versioned config file
+CONFIG_FILE="$CONFIG_DIR/clawdbot.${CONFIG_VERSION}.json"
+LEGACY_CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
+
 echo "Config directory: $CONFIG_DIR"
+echo "Config version: $CONFIG_VERSION"
+echo "Config file: $CONFIG_FILE"
 echo "Backup directory: $BACKUP_DIR"
 
 # Create config directory
@@ -105,6 +115,29 @@ if [ -d "$BACKUP_DIR/skills" ] && [ "$(ls -A $BACKUP_DIR/skills 2>/dev/null)" ];
     fi
 fi
 
+# ============================================================
+# MIGRATE LEGACY CONFIG TO VERSIONED FORMAT
+# ============================================================
+# If this is the first time running with CONFIG_VERSION,
+# migrate the legacy clawdbot.json to the versioned format
+if [ -f "$LEGACY_CONFIG_FILE" ] && [ ! -L "$LEGACY_CONFIG_FILE" ] && [ ! -f "$CONFIG_FILE" ]; then
+    echo "=========================================="
+    echo "Migrating legacy config to versioned format"
+    echo "=========================================="
+    echo "Legacy config: $LEGACY_CONFIG_FILE"
+    echo "New config: $CONFIG_FILE"
+
+    # Copy legacy config to versioned file
+    cp "$LEGACY_CONFIG_FILE" "$CONFIG_FILE"
+
+    # Rename legacy config to .backup for safety
+    mv "$LEGACY_CONFIG_FILE" "$LEGACY_CONFIG_FILE.pre-version-isolation.backup"
+
+    echo "Migration complete. Legacy config backed up to:"
+    echo "  $LEGACY_CONFIG_FILE.pre-version-isolation.backup"
+    echo "=========================================="
+fi
+
 # If config file still doesn't exist, create from template
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "No existing config found, initializing from template..."
@@ -133,10 +166,13 @@ fi
 # ============================================================
 # UPDATE CONFIG FROM ENVIRONMENT VARIABLES
 # ============================================================
+# Export CONFIG_FILE so Node.js can access it
+export CONFIG_FILE
+
 node << EOFNODE
 const fs = require('fs');
 
-const configPath = '/root/.clawdbot/clawdbot.json';
+const configPath = process.env.CONFIG_FILE || '/root/.clawdbot/clawdbot.json';
 console.log('Updating config at:', configPath);
 let config = {};
 

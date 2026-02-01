@@ -9,6 +9,11 @@ import type { MoltbotEnv } from '../types';
 export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   const envVars: Record<string, string> = {};
 
+  // Config version for config file isolation (injected at build time)
+  if (env.CONFIG_VERSION) {
+    envVars.CONFIG_VERSION = env.CONFIG_VERSION;
+  }
+
   // Normalize the base URL by removing trailing slashes
   const normalizedBaseUrl = env.AI_GATEWAY_BASE_URL?.replace(/\/+$/, '');
   const isOpenAIGateway = normalizedBaseUrl?.endsWith('/openai');

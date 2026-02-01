@@ -20,6 +20,9 @@
  * - SLACK_BOT_TOKEN + SLACK_APP_TOKEN: Slack tokens
  */
 
+// Global constant injected at build time by Vite
+declare const __CONFIG_VERSION__: string;
+
 import { Hono } from 'hono';
 import { getSandbox, Sandbox, type SandboxOptions } from '@cloudflare/sandbox';
 
@@ -107,6 +110,17 @@ const app = new Hono<AppEnv>();
 // =============================================================================
 // MIDDLEWARE: Applied to ALL routes
 // =============================================================================
+
+// Middleware: Inject build-time config version into env
+app.use('*', async (c, next) => {
+  // Inject CONFIG_VERSION from build-time constant
+  if (typeof __CONFIG_VERSION__ !== 'undefined') {
+    c.env.CONFIG_VERSION = __CONFIG_VERSION__;
+  } else {
+    console.warn('[CONFIG] __CONFIG_VERSION__ not defined at build time');
+  }
+  return next();
+});
 
 // Middleware: Log every request
 app.use('*', async (c, next) => {

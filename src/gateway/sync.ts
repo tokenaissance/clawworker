@@ -36,22 +36,25 @@ export async function syncToR2(sandbox: Sandbox, env: MoltbotEnv): Promise<SyncR
     return { success: false, error: 'Failed to mount R2 storage' };
   }
 
-  // Sanity check: verify source has critical files before syncing
+  // Sanity check: verify source has config files before syncing
   // This prevents accidentally overwriting a good backup with empty/corrupted data
+  // Note: Config files are now versioned (clawdbot.{version}_{timestamp}.json)
   try {
-    const checkProc = await sandbox.startProcess('test -f /root/.clawdbot/clawdbot.json && echo "ok"');
+    // Check for any config file (versioned or legacy)
+    const checkCmd = 'test -f /root/.clawdbot/clawdbot.*.json || test -f /root/.clawdbot/clawdbot.json && echo "ok"';
+    const checkProc = await sandbox.startProcess(checkCmd);
     await waitForProcess(checkProc, 5000);
     const checkLogs = await checkProc.getLogs();
     if (!checkLogs.stdout?.includes('ok')) {
-      return { 
-        success: false, 
-        error: 'Sync aborted: source missing clawdbot.json',
+      return {
+        success: false,
+        error: 'Sync aborted: source missing config files',
         details: 'The local config directory is missing critical files. This could indicate corruption or an incomplete setup.',
       };
     }
   } catch (err) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'Failed to verify source files',
       details: err instanceof Error ? err.message : 'Unknown error',
     };
