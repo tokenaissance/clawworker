@@ -5,7 +5,8 @@
       "Bash(find:*)",
       "Bash(cat:*)",
       "Bash(wc:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm run deploy:*)"
     ]
   }
 }
