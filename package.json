@@ -1,5 +1,5 @@
 {
-  "name": "clawbot-sandbox",
+  "name": "paramita-cloud",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -7,8 +7,12 @@
   "scripts": {
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:prod": "npm run build && wrangler deploy --config wrangler.jsonc --env production",
+    "deploy:dev": "npm run build && wrangler deploy --config wrangler.jsonc --env development",
     "dev": "vite dev",
     "start": "wrangler dev",
+    "start:prod": "wrangler dev --config wrangler.jsonc --env production",
+    "start:dev": "wrangler dev --config wrangler.jsonc --env development",
     "types": "wrangler types",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

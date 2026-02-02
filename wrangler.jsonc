@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "clawbot-sandbox",
+	// Base configuration (shared by all environments)
+	"name": "paramita-cloud",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-05-06",
 	"compatibility_flags": [
@@ -96,4 +97,108 @@
 	// - R2_ACCESS_KEY_ID: R2 access key ID (from R2 API tokens)
 	// - R2_SECRET_ACCESS_KEY: R2 secret access key (from R2 API tokens)
 	// - CF_ACCOUNT_ID: Your Cloudflare account ID (for R2 endpoint URL)
+	// ============================================================================
+	// Production Environment Configuration
+	// ============================================================================
+	"env": {
+		"production": {
+			"name": "paramita-cloud-production",
+			"vars": {
+				"ENVIRONMENT": "production"
+			},
+			// Container configuration for the Moltbot sandbox
+			"containers": [
+				{
+					"class_name": "Sandbox",
+					"image": "./Dockerfile",
+					"instance_type": "standard-4",
+					"max_instances": 1,
+				},
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "Sandbox",
+						"name": "Sandbox",
+					},
+				],
+			},
+			"migrations": [
+				{
+					"new_sqlite_classes": [
+						"Sandbox"
+					],
+					"tag": "v1",
+				},
+			],
+			// Browser Rendering binding for CDP shim
+			"browser": {
+				"binding": "BROWSER",
+			},
+			// Production R2 bucket
+			"r2_buckets": [
+				{
+					"binding": "MOLTBOT_BUCKET",
+					"bucket_name": "moltbot-data-production"
+				}
+			],
+			// Production cron trigger (every 5 minutes)
+			"triggers": {
+				"crons": [
+					"*/5 * * * *"
+				]
+			}
+		},
+		// ============================================================================
+		// Development Environment Configuration
+		// ============================================================================
+		"development": {
+			"name": "paramita-cloud-development",
+			"vars": {
+				"ENVIRONMENT": "development"
+			},
+			// Container configuration for the Moltbot sandbox
+			"containers": [
+				{
+					"class_name": "Sandbox",
+					"image": "./Dockerfile",
+					"instance_type": "standard-4",
+					"max_instances": 1,
+				},
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "Sandbox",
+						"name": "Sandbox",
+					},
+				],
+			},
+			"migrations": [
+				{
+					"new_sqlite_classes": [
+						"Sandbox"
+					],
+					"tag": "v1",
+				},
+			],
+			// Browser Rendering binding for CDP shim
+			"browser": {
+				"binding": "BROWSER",
+			},
+			// Development R2 bucket
+			"r2_buckets": [
+				{
+					"binding": "MOLTBOT_BUCKET",
+					"bucket_name": "moltbot-data-development"
+				}
+			],
+			// Development cron trigger (every 5 minutes)
+			"triggers": {
+				"crons": [
+					"*/5 * * * *"
+				]
+			}
+		}
+	}
 }

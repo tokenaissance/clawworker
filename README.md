@@ -39,34 +39,43 @@ This project packages OpenClaw to run in a [Cloudflare Sandbox](https://develope
 
 _Cloudflare Sandboxes are available on the [Workers Paid plan](https://dash.cloudflare.com/?to=/:account/workers/plans)._
 
+This project supports multiple deployment environments. You can deploy to **development** (for testing) or **production** (for live deployment). Secrets must be configured separately for each environment.
+
 ```bash
 # Install dependencies
 npm install
 
-# Set your API key (direct Anthropic access)
-npx wrangler secret put ANTHROPIC_API_KEY
+# Set your API key for development environment (direct Anthropic access)
+npx wrangler secret put ANTHROPIC_API_KEY --env development
 
 # Or use AI Gateway instead (see "Optional: Cloudflare AI Gateway" below)
-# npx wrangler secret put AI_GATEWAY_API_KEY
-# npx wrangler secret put AI_GATEWAY_BASE_URL
+# npx wrangler secret put AI_GATEWAY_API_KEY --env development
+# npx wrangler secret put AI_GATEWAY_BASE_URL --env development
 
 # Generate and set a gateway token (required for remote access)
 # Save this token - you'll need it to access the Control UI
 export MOLTBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)
 echo "Your gateway token: $MOLTBOT_GATEWAY_TOKEN"
-echo "$MOLTBOT_GATEWAY_TOKEN" | npx wrangler secret put MOLTBOT_GATEWAY_TOKEN
+echo "$MOLTBOT_GATEWAY_TOKEN" | npx wrangler secret put MOLTBOT_GATEWAY_TOKEN --env development
 
-# Deploy
-npm run deploy
+# Deploy to development environment (recommended for first deployment)
+npm run deploy:dev
+
+# Or deploy to production environment
+# npm run deploy:prod
 ```
 
 After deploying, open the Control UI with your token:
 
 ```
-https://your-worker.workers.dev/?token=YOUR_GATEWAY_TOKEN
+# Development environment
+https://paramita-cloud-development.your-subdomain.workers.dev/?token=YOUR_GATEWAY_TOKEN
+
+# Production environment
+https://paramita-cloud-production.your-subdomain.workers.dev/?token=YOUR_GATEWAY_TOKEN
 ```
 
-Replace `your-worker` with your actual worker subdomain and `YOUR_GATEWAY_TOKEN` with the token you generated above.
+Replace `your-subdomain` with your Cloudflare account subdomain and `YOUR_GATEWAY_TOKEN` with the token you generated above.
 
 **Note:** The first request may take 1-2 minutes while the container starts.
 
@@ -75,6 +84,8 @@ Replace `your-worker` with your actual worker subdomain and `YOUR_GATEWAY_TOKEN`
 > 2. [Pair your device](#device-pairing) via the admin UI at `/_admin/`
 
 You'll also likely want to [enable R2 storage](#persistent-storage-r2) so your paired devices and conversation history persist across container restarts (optional but recommended).
+
+For more detailed information about environment configuration and deployment options, see the [Deployment Guide](docs/DEPLOYMENT.md).
 
 ## Setting Up the Admin UI
 
@@ -100,11 +111,16 @@ The easiest way to protect your worker is using the built-in Cloudflare Access i
 After enabling Cloudflare Access, set the secrets so the worker can validate JWTs:
 
 ```bash
+# For development environment
 # Your Cloudflare Access team domain (e.g., "myteam.cloudflareaccess.com")
-npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
+npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env development
 
 # The Application Audience (AUD) tag from your Access application that you copied in the step above
-npx wrangler secret put CF_ACCESS_AUD
+npx wrangler secret put CF_ACCESS_AUD --env development
+
+# For production environment, repeat with --env production
+# npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env production
+# npx wrangler secret put CF_ACCESS_AUD --env production
 ```
 
 You can find your team domain in the [Zero Trust Dashboard](https://one.dash.cloudflare.com/) under **Settings** > **Custom Pages** (it's the subdomain before `.cloudflareaccess.com`).
@@ -112,7 +128,11 @@ You can find your team domain in the [Zero Trust Dashboard](https://one.dash.clo
 ### 3. Redeploy
 
 ```bash
-npm run deploy
+# Deploy to development environment
+npm run deploy:dev
+
+# Or deploy to production environment
+# npm run deploy:prod
 ```
 
 Now visit `/_admin/` and you'll be prompted to authenticate via Cloudflare Access before accessing the admin UI.
@@ -137,6 +157,8 @@ For local development, create a `.dev.vars` file with:
 DEV_MODE=true               # Skip Cloudflare Access auth + bypass device pairing
 DEBUG_ROUTES=true           # Enable /debug/* routes (optional)
 ```
+
+You can also test with environment-specific configurations using `npm run start:dev` or `npm run start:prod`.
 
 ## Authentication
 
@@ -170,23 +192,30 @@ By default, moltbot data (configs, paired devices, conversation history) is lost
 
 ### 1. Create R2 API Token
 
+First, create the R2 buckets for your environments in the [Cloudflare Dashboard](https://dash.cloudflare.com/):
+- **Development**: `moltbot-data-development`
+- **Production**: `moltbot-data-production`
+
+Then, create an R2 API token:
+
 1. Go to **R2** > **Overview** in the [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. Click **Manage R2 API Tokens**
 3. Create a new token with **Object Read & Write** permissions
-4. Select the `moltbot-data` bucket (created automatically on first deploy)
+4. Select the appropriate bucket for your environment
 5. Copy the **Access Key ID** and **Secret Access Key**
 
 ### 2. Set Secrets
 
 ```bash
-# R2 Access Key ID
-npx wrangler secret put R2_ACCESS_KEY_ID
+# For development environment
+npx wrangler secret put R2_ACCESS_KEY_ID --env development
+npx wrangler secret put R2_SECRET_ACCESS_KEY --env development
+npx wrangler secret put CF_ACCOUNT_ID --env development
 
-# R2 Secret Access Key
-npx wrangler secret put R2_SECRET_ACCESS_KEY
-
-# Your Cloudflare Account ID
-npx wrangler secret put CF_ACCOUNT_ID
+# For production environment
+# npx wrangler secret put R2_ACCESS_KEY_ID --env production
+# npx wrangler secret put R2_SECRET_ACCESS_KEY --env production
+# npx wrangler secret put CF_ACCOUNT_ID --env production
 ```
 
 To find your Account ID: Go to the [Cloudflare Dashboard](https://dash.cloudflare.com/), click the three dots menu next to your account name, and select "Copy Account ID".
@@ -216,8 +245,11 @@ By default, the sandbox container stays alive indefinitely (`SANDBOX_SLEEP_AFTER
 To reduce costs for infrequently used deployments, you can configure the container to sleep after a period of inactivity:
 
 ```bash
-npx wrangler secret put SANDBOX_SLEEP_AFTER
+npx wrangler secret put SANDBOX_SLEEP_AFTER --env development
 # Enter: 10m (or 1h, 30m, etc.)
+
+# For production environment
+# npx wrangler secret put SANDBOX_SLEEP_AFTER --env production
 ```
 
 When the container sleeps, the next request will trigger a cold start. If you have R2 storage configured, your paired devices and data will persist across restarts.
@@ -246,23 +278,23 @@ Debug endpoints are available at `/debug/*` when enabled (requires `DEBUG_ROUTES
 ### Telegram
 
 ```bash
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npm run deploy
+npx wrangler secret put TELEGRAM_BOT_TOKEN --env development
+npm run deploy:dev
 ```
 
 ### Discord
 
 ```bash
-npx wrangler secret put DISCORD_BOT_TOKEN
-npm run deploy
+npx wrangler secret put DISCORD_BOT_TOKEN --env development
+npm run deploy:dev
 ```
 
 ### Slack
 
 ```bash
-npx wrangler secret put SLACK_BOT_TOKEN
-npx wrangler secret put SLACK_APP_TOKEN
-npm run deploy
+npx wrangler secret put SLACK_BOT_TOKEN --env development
+npx wrangler secret put SLACK_APP_TOKEN --env development
+npm run deploy:dev
 ```
 
 ## Optional: Browser Automation (CDP)
@@ -274,21 +306,21 @@ This worker includes a Chrome DevTools Protocol (CDP) shim that enables browser 
 1. Set a shared secret for authentication:
 
 ```bash
-npx wrangler secret put CDP_SECRET
+npx wrangler secret put CDP_SECRET --env development
 # Enter a secure random string
 ```
 
 2. Set your worker's public URL:
 
 ```bash
-npx wrangler secret put WORKER_URL
-# Enter: https://your-worker.workers.dev
+npx wrangler secret put WORKER_URL --env development
+# Enter: https://paramita-cloud-development.your-subdomain.workers.dev
 ```
 
 3. Redeploy:
 
 ```bash
-npm run deploy
+npm run deploy:dev
 ```
 
 ### Endpoints
@@ -340,22 +372,26 @@ You'll find the base URL on the Overview tab of your newly created gateway. At t
 
 ```bash
 # Your provider's API key (e.g., Anthropic API key)
-npx wrangler secret put AI_GATEWAY_API_KEY
+npx wrangler secret put AI_GATEWAY_API_KEY --env development
 
 # Your AI Gateway endpoint URL
-npx wrangler secret put AI_GATEWAY_BASE_URL
+npx wrangler secret put AI_GATEWAY_BASE_URL --env development
 # Enter: https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
 ```
 
 4. Redeploy:
 
 ```bash
-npm run deploy
+npm run deploy:dev
 ```
 
 The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 
 ## All Secrets Reference
+
+**Note on Environments:** All secrets should be configured separately for each deployment environment using the `--env` flag. For example:
+- Development: `npx wrangler secret put SECRET_NAME --env development`
+- Production: `npx wrangler secret put SECRET_NAME --env production`
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -411,6 +447,13 @@ OpenClaw in Cloudflare Sandbox uses multiple authentication layers:
 **Devices not appearing in admin UI:** Device list commands take 10-15 seconds due to WebSocket connection overhead. Wait and refresh.
 
 **WebSocket issues in local development:** `wrangler dev` has known limitations with WebSocket proxying through the sandbox. HTTP requests work but WebSocket connections may fail. Deploy to Cloudflare for full functionality.
+
+## Documentation
+
+For detailed deployment and configuration guides, see the [docs/](docs/) directory:
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Complete guide for deploying to production and development environments
+- **[Documentation Index](docs/README.md)** - Full documentation index including planning documents
 
 ## Links
 
