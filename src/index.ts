@@ -12,9 +12,9 @@
  *
  * Required secrets (set via `wrangler secret put`):
  * - ANTHROPIC_API_KEY: Your Anthropic API key
+ * - CLAWDBOT_GATEWAY_TOKEN: Token to protect gateway access
  *
  * Optional secrets:
- * - MOLTBOT_GATEWAY_TOKEN: Token to protect gateway access
  * - TELEGRAM_BOT_TOKEN: Telegram bot token
  * - DISCORD_BOT_TOKEN: Discord bot token
  * - SLACK_BOT_TOKEN + SLACK_APP_TOKEN: Slack tokens
@@ -57,8 +57,11 @@ function validateRequiredEnv(env: MoltbotEnv): string[] {
   const missing: string[] = [];
   const isTestMode = env.DEV_MODE === 'true' || env.E2E_TEST_MODE === 'true';
 
-  if (!env.MOLTBOT_GATEWAY_TOKEN) {
-    missing.push('MOLTBOT_GATEWAY_TOKEN');
+  // Gateway token is required for container authentication
+  // - Container uses --bind lan mode which requires authentication
+  // - Device pairing is not suitable for unattended container environment
+  if (!env.CLAWDBOT_GATEWAY_TOKEN) {
+    missing.push('CLAWDBOT_GATEWAY_TOKEN');
   }
 
   // CF Access vars not required in dev/test mode since auth is skipped
