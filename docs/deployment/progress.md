@@ -1,5 +1,112 @@
 # 进度日志
 
+## 2026-02-03 - Gateway Token 认证问题修复
+
+### 问题背景
+
+用户在 Cloudflare Dashboard 中没有配置 `MOLTBOT_GATEWAY_TOKEN`，导致访问 `/_admin/` 时报错：
+```
+Missing Variables: MOLTBOT_GATEWAY_TOKEN
+```
+
+### 第一次修复尝试
+
+在 `src/index.ts:58-60` 注释掉了 `MOLTBOT_GATEWAY_TOKEN` 的必需检查：
+```typescript
+// Allow device pairing mode (no token required)
+// if (!env.MOLTBOT_GATEWAY_TOKEN) {
+//   missing.push('MOLTBOT_GATEWAY_TOKEN');
+// }
+```
+
+### 新问题出现
+
+部署后，Gateway 启动失败，错误信息：
+```
+Refusing to bind gateway to lan without auth.
+Set gateway.auth.token (or CLAWDBOT_GATEWAY_TOKEN) or pass --token.
+```
+
+### 问题根因分析
+
+问题出在 `start-moltbot.sh` 的启动逻辑：
+
+```bash
+BIND_MODE="lan"  # 固定为 lan 模式
+
+if [ -n "$CLAWDBOT_GATEWAY_TOKEN" ]; then
+    # 有 token：使用 token 认证
+    exec clawdbot gateway --port 18789 --bind "$BIND_MODE" --token "$CLAWDBOT_GATEWAY_TOKEN"
+else
+    # 无 token：尝试无认证启动（但 lan 模式不允许）
+    exec clawdbot gateway --port 18789 --bind "$BIND_MODE"
+fi
+```
+
+**关键发现**：
+- `clawdbot gateway` 在 `--bind lan` 模式下**必须**有认证（token 或 device pairing）
+- 但 device pairing 需要交互式配对，不适合无人值守的容器环境
+- 因此在 LAN 模式下，`CLAWDBOT_GATEWAY_TOKEN` 实际上是必需的
+
+### Token 流转路径
+
+```
+用户配置 (CF Dashboard)     Worker 代码              容器启动脚本
+MOLTBOT_GATEWAY_TOKEN  -->  buildEnvVars()  -->  CLAWDBOT_GATEWAY_TOKEN
+                            (src/gateway/env.ts:47)
+```
+
+映射代码：
+```typescript
+// src/gateway/env.ts:46-47
+if (env.MOLTBOT_GATEWAY_TOKEN) envVars.CLAWDBOT_GATEWAY_TOKEN = env.MOLTBOT_GATEWAY_TOKEN;
+```
+
+### 解决方案
+
+**结论**：`MOLTBOT_GATEWAY_TOKEN` 在当前架构下是必需的，不能简单注释掉。
+
+**正确做法**：
+1. 恢复 `src/index.ts` 中的必需检查
+2. 用户必须在 CF Dashboard 配置 `MOLTBOT_GATEWAY_TOKEN`
+
+**配置步骤**：
+```bash
+# 生成随机 token
+openssl rand -hex 32
+
+# 在 CF Dashboard 或 CLI 配置
+npx wrangler secret put MOLTBOT_GATEWAY_TOKEN --env development
+npx wrangler secret put MOLTBOT_GATEWAY_TOKEN --env production
+```
+
+### 已完成
+- [x] 分析问题根因
+- [x] 理解 token 流转路径
+- [x] 确定解决方案
+- [x] 恢复 src/index.ts 中的必需检查（添加注释说明原因）
+- [x] 更新 findings.md 文档说明 token 认证机制
+
+### 代码修改完成 (2026-02-03)
+
+#### Phase 1: 类型定义修改 ✅
+- 文件：`src/types.ts`
+- 添加 `CLAWDBOT_GATEWAY_TOKEN?: string` 到 `MoltbotEnv` 接口
+
+#### Phase 2: 环境变量传递修改 ✅
+- 文件：`src/gateway/env.ts`
+- 修改 `buildEnvVars()` 函数，支持 `CLAWDBOT_GATEWAY_TOKEN` 优先
+
+#### Phase 3: 验证逻辑修改 ✅
+- 文件：`src/index.ts`
+- 修改 `validateRequiredEnv()` 函数，检查两个变量之一存在即可
+
+#### Phase 4: 测试 ✅
+- 添加 2 个新测试用例到 `src/gateway/env.test.ts`
+- 运行测试：66 tests passed
+
+---
+
 ## 2026-02-02 - README.md 环境配置更新 ✅
 
 ### 任务目标

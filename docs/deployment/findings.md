@@ -1,5 +1,58 @@
 # 环境配置发现和分析
 
+## Gateway Token 认证机制分析 (2026-02-03)
+
+### Token 命名约定
+
+| 位置 | 变量名 | 说明 |
+|------|--------|------|
+| CF Worker 环境变量 | `MOLTBOT_GATEWAY_TOKEN` | 用户在 Dashboard 配置 |
+| 容器内环境变量 | `CLAWDBOT_GATEWAY_TOKEN` | clawdbot 程序期望的名字 |
+
+### 映射关系
+
+`src/gateway/env.ts:46-47`:
+```typescript
+// Map MOLTBOT_GATEWAY_TOKEN to CLAWDBOT_GATEWAY_TOKEN (container expects this name)
+if (env.MOLTBOT_GATEWAY_TOKEN) envVars.CLAWDBOT_GATEWAY_TOKEN = env.MOLTBOT_GATEWAY_TOKEN;
+```
+
+### Gateway 认证模式
+
+`clawdbot gateway` 支持两种认证模式：
+
+1. **Token 认证** (`--token`)
+   - 客户端通过 `?token=xxx` 参数访问
+   - 适合自动化、API 调用
+   - **LAN 模式必需**
+
+2. **Device Pairing 认证**
+   - 通过 `/_admin/` 页面交互式配对
+   - 需要人工操作
+   - 不适合容器环境
+
+### 为什么 Token 是必需的
+
+`start-moltbot.sh` 中固定使用 `--bind lan` 模式：
+```bash
+BIND_MODE="lan"
+exec clawdbot gateway --port 18789 --bind "$BIND_MODE" [--token ...]
+```
+
+`clawdbot gateway` 在 LAN 模式下的安全策略：
+- **必须有认证**才能绑定到 LAN
+- 没有 token 时会拒绝启动：`Refusing to bind gateway to lan without auth`
+
+### 结论
+
+在当前架构下，`MOLTBOT_GATEWAY_TOKEN` 是**必需的**环境变量，原因：
+1. 容器使用 LAN 绑定模式
+2. LAN 模式要求认证
+3. Device Pairing 不适合无人值守环境
+4. 因此必须使用 Token 认证
+
+---
+
 ## 当前配置分析
 
 ### R2 Bucket 当前配置
