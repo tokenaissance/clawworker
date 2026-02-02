@@ -55,7 +55,7 @@ Secret 名称在两个环境保持一致，但可以配置不同的值。
 ### 为生产环境配置 Secret
 ```bash
 wrangler secret put ANTHROPIC_API_KEY --env production
-wrangler secret put MOLTBOT_GATEWAY_TOKEN --env production
+wrangler secret put CLAWDBOT_GATEWAY_TOKEN --env production
 wrangler secret put R2_ACCESS_KEY_ID --env production
 wrangler secret put R2_SECRET_ACCESS_KEY --env production
 wrangler secret put CF_ACCOUNT_ID --env production
@@ -65,7 +65,7 @@ wrangler secret put CF_ACCOUNT_ID --env production
 ### 为开发环境配置 Secret
 ```bash
 wrangler secret put ANTHROPIC_API_KEY --env development
-wrangler secret put MOLTBOT_GATEWAY_TOKEN --env development
+wrangler secret put CLAWDBOT_GATEWAY_TOKEN --env development
 wrangler secret put R2_ACCESS_KEY_ID --env development
 wrangler secret put R2_SECRET_ACCESS_KEY --env development
 wrangler secret put CF_ACCOUNT_ID --env development
@@ -84,8 +84,10 @@ wrangler secret put CF_ACCOUNT_ID --env development
 - `CF_ACCESS_TEAM_DOMAIN` - CF Access 团队域名
 - `CF_ACCESS_AUD` - CF Access 应用 AUD
 
+### 必需配置
+- `CLAWDBOT_GATEWAY_TOKEN` - Gateway 访问 token（必需）
+
 ### 可选配置
-- `MOLTBOT_GATEWAY_TOKEN` - Gateway 访问 token（未设置则使用 device pairing）
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token
 - `DISCORD_BOT_TOKEN` - Discord bot token
 - `SLACK_BOT_TOKEN` - Slack bot token
