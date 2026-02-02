@@ -5,7 +5,11 @@
       "Bash(find:*)",
       "Bash(cat:*)",
       "Bash(wc:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(tree:*)",
+      "Bash(npm run deploy:dev:*)",
+      "Bash(npx wrangler deploy:*)",
+      "Bash(npx wrangler:*)"
     ]
   }
 }
