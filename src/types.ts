@@ -17,6 +17,7 @@ export interface MoltbotEnv {
   // Gateway token for container authentication
   CLAWDBOT_GATEWAY_TOKEN?: string;
 
+  ENVIRONMENT?: string; // Environment: "production" or "development"
   CLAWDBOT_BIND_MODE?: string;
   DEV_MODE?: string; // Set to 'true' for local dev (skips CF Access auth + moltbot device pairing)
   DEBUG_ROUTES?: string; // Set to 'true' to enable /debug/* routes

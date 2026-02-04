@@ -1,6 +1,6 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 import type { MoltbotEnv } from '../types';
-import { R2_MOUNT_PATH } from '../config';
+import { getR2MountPath } from '../config';
 import { mountR2Storage } from './r2';
 import { waitForProcess } from './utils';
 
@@ -36,6 +36,9 @@ export async function syncToR2(sandbox: Sandbox, env: MoltbotEnv): Promise<SyncR
     return { success: false, error: 'Failed to mount R2 storage' };
   }
 
+  // Get environment-specific mount path
+  const mountPath = getR2MountPath(env.ENVIRONMENT);
+
   // Sanity check: verify source has critical files before syncing
   // This prevents accidentally overwriting a good backup with empty/corrupted data
   try {
@@ -43,15 +46,15 @@ export async function syncToR2(sandbox: Sandbox, env: MoltbotEnv): Promise<SyncR
     await waitForProcess(checkProc, 5000);
     const checkLogs = await checkProc.getLogs();
     if (!checkLogs.stdout?.includes('ok')) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: 'Sync aborted: source missing clawdbot.json',
         details: 'The local config directory is missing critical files. This could indicate corruption or an incomplete setup.',
       };
     }
   } catch (err) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'Failed to verify source files',
       details: err instanceof Error ? err.message : 'Unknown error',
     };
@@ -59,20 +62,21 @@ export async function syncToR2(sandbox: Sandbox, env: MoltbotEnv): Promise<SyncR
 
   // Run rsync to backup config to R2
   // Note: Use --no-times because s3fs doesn't support setting timestamps
-  const syncCmd = `rsync -r --no-times --delete --exclude='*.lock' --exclude='*.log' --exclude='*.tmp' /root/.clawdbot/ ${R2_MOUNT_PATH}/clawdbot/ && rsync -r --no-times --delete /root/clawd/skills/ ${R2_MOUNT_PATH}/skills/ && date -Iseconds > ${R2_MOUNT_PATH}/.last-sync`;
-  
+  // const syncCmd = `rsync -r --no-times --delete --exclude='*.lock' --exclude='*.log' --exclude='*.tmp' /root/.clawdbot/ ${mountPath}/clawdbot/ && rsync -r --no-times --delete /root/clawd/skills/ ${mountPath}/skills/ && date -Iseconds > ${mountPath}/.last-sync`;
+  const syncCmd = `rsync -r --no-times --delete --exclude='*.lock' --exclude='*.tmp' /root/.clawdbot/ ${mountPath}/clawdbot/ && rsync -r --no-times --delete /root/clawd/skills/ ${mountPath}/skills/ && date -Iseconds > ${mountPath}/.last-sync`;
+
   try {
     const proc = await sandbox.startProcess(syncCmd);
     await waitForProcess(proc, 30000); // 30 second timeout for sync
 
     // Check for success by reading the timestamp file
     // (process status may not update reliably in sandbox API)
-    // Note: backup structure is ${R2_MOUNT_PATH}/clawdbot/ and ${R2_MOUNT_PATH}/skills/
-    const timestampProc = await sandbox.startProcess(`cat ${R2_MOUNT_PATH}/.last-sync`);
+    // Note: backup structure is ${mountPath}/clawdbot/ and ${mountPath}/skills/
+    const timestampProc = await sandbox.startProcess(`cat ${mountPath}/.last-sync`);
     await waitForProcess(timestampProc, 5000);
     const timestampLogs = await timestampProc.getLogs();
     const lastSync = timestampLogs.stdout?.trim();
-    
+
     if (lastSync && lastSync.match(/^\d{4}-\d{2}-\d{2}/)) {
       return { success: true, lastSync };
     } else {
@@ -84,8 +88,8 @@ export async function syncToR2(sandbox: Sandbox, env: MoltbotEnv): Promise<SyncR
       };
     }
   } catch (err) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'Sync error',
       details: err instanceof Error ? err.message : 'Unknown error',
     };

@@ -4,6 +4,15 @@ This directory contains detailed security documentation for the OpenClaw Cloudfl
 
 ## Documents
 
+### [Authentication Architecture](authentication-architecture.md)
+Explains the three-layer security model and why the browser never needs the gateway token:
+- Defense in depth architecture
+- Layer 1: Cloudflare Access (user authentication)
+- Layer 2: Gateway Token (source verification)
+- Layer 3: Device Pairing (device authorization)
+- Request flow for HTTP and WebSocket
+- Security benefits and FAQ
+
 ### [Device Pairing](device-pairing.md)
 Comprehensive analysis of the device pairing authentication mechanism, including:
 - Why device pairing is required

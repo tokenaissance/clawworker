@@ -64,7 +64,7 @@ describe('mountR2Storage', () => {
   });
 
   describe('mounting behavior', () => {
-    it('mounts R2 bucket when credentials provided and not already mounted', async () => {
+    it('uses default mount path when ENVIRONMENT is not set', async () => {
       const { sandbox, mountBucketMock } = createMockSandbox({ mounted: false });
       const env = createMockEnvWithR2({
         R2_ACCESS_KEY_ID: 'key123',
@@ -88,6 +88,62 @@ describe('mountR2Storage', () => {
       );
     });
 
+    it('uses environment-specific mount path when ENVIRONMENT is production', async () => {
+      const { sandbox, mountBucketMock } = createMockSandbox({ mounted: false });
+      const env = createMockEnvWithR2({
+        R2_ACCESS_KEY_ID: 'key123',
+        R2_SECRET_ACCESS_KEY: 'secret',
+        CF_ACCOUNT_ID: 'account123',
+        ENVIRONMENT: 'production',
+      });
+
+      const result = await mountR2Storage(sandbox, env);
+
+      expect(result).toBe(true);
+      expect(mountBucketMock).toHaveBeenCalledWith(
+        'moltbot-data-production',
+        '/data/moltbot-production',
+        {
+          endpoint: 'https://account123.r2.cloudflarestorage.com',
+          credentials: {
+            accessKeyId: 'key123',
+            secretAccessKey: 'secret',
+          },
+        }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        'Mounting R2 bucket "moltbot-data-production" at /data/moltbot-production'
+      );
+    });
+
+    it('uses development mount path when ENVIRONMENT is development', async () => {
+      const { sandbox, mountBucketMock } = createMockSandbox({ mounted: false });
+      const env = createMockEnvWithR2({
+        R2_ACCESS_KEY_ID: 'key123',
+        R2_SECRET_ACCESS_KEY: 'secret',
+        CF_ACCOUNT_ID: 'account123',
+        ENVIRONMENT: 'development',
+      });
+
+      const result = await mountR2Storage(sandbox, env);
+
+      expect(result).toBe(true);
+      expect(mountBucketMock).toHaveBeenCalledWith(
+        'moltbot-data-development',
+        '/data/moltbot-development',
+        {
+          endpoint: 'https://account123.r2.cloudflarestorage.com',
+          credentials: {
+            accessKeyId: 'key123',
+            secretAccessKey: 'secret',
+          },
+        }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        'Mounting R2 bucket "moltbot-data-development" at /data/moltbot-development'
+      );
+    });
+
     it('returns true immediately when bucket is already mounted', async () => {
       const { sandbox, mountBucketMock } = createMockSandbox({ mounted: true });
       const env = createMockEnvWithR2();
@@ -97,8 +153,7 @@ describe('mountR2Storage', () => {
       expect(result).toBe(true);
       expect(mountBucketMock).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
-        'R2 bucket already mounted at',
-        '/data/moltbot'
+        expect.stringMatching(/^R2 bucket already mounted at \/data\/moltbot/)
       );
     });
 

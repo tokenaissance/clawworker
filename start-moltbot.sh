@@ -20,7 +20,16 @@ CONFIG_DIR="/root/.clawdbot"
 CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
 TEMPLATE_DIR="/root/.clawdbot-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/moltbot.json.template"
-BACKUP_DIR="/data/moltbot"
+
+# Get environment-specific backup directory
+# This matches the mount path used by src/config.ts:getR2MountPath()
+if [ -n "$ENVIRONMENT" ]; then
+    BACKUP_DIR="/data/moltbot-$ENVIRONMENT"
+    echo "Using environment-specific backup directory: $BACKUP_DIR (ENVIRONMENT=$ENVIRONMENT)"
+else
+    BACKUP_DIR="/data/moltbot"
+    echo "Using default backup directory: $BACKUP_DIR (no ENVIRONMENT set)"
+fi
 
 echo "Config directory: $CONFIG_DIR"
 echo "Backup directory: $BACKUP_DIR"
