@@ -47,6 +47,10 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   if (env.CLAWDBOT_GATEWAY_TOKEN) {
     envVars.CLAWDBOT_GATEWAY_TOKEN = env.CLAWDBOT_GATEWAY_TOKEN;
   }
+  // Environment name (for R2 path isolation)
+  if (env.ENVIRONMENT) {
+    envVars.ENVIRONMENT = env.ENVIRONMENT;
+  }
   if (env.DEV_MODE) envVars.CLAWDBOT_DEV_MODE = env.DEV_MODE; // Pass DEV_MODE as CLAWDBOT_DEV_MODE to container
   if (env.CLAWDBOT_BIND_MODE) envVars.CLAWDBOT_BIND_MODE = env.CLAWDBOT_BIND_MODE;
   if (env.TELEGRAM_BOT_TOKEN) envVars.TELEGRAM_BOT_TOKEN = env.TELEGRAM_BOT_TOKEN;

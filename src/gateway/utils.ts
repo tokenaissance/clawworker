@@ -4,13 +4,13 @@
 
 /**
  * Wait for a sandbox process to complete
- * 
+ *
  * @param proc - Process object with status property
  * @param timeoutMs - Maximum time to wait in milliseconds
  * @param pollIntervalMs - How often to check status (default 500ms)
  */
 export async function waitForProcess(
-  proc: { status: string }, 
+  proc: { status: string },
   timeoutMs: number,
   pollIntervalMs: number = 500
 ): Promise<void> {

@@ -1,13 +1,13 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 import type { MoltbotEnv } from '../types';
-import { R2_MOUNT_PATH, getR2BucketName } from '../config';
+import { getR2BucketName, getR2MountPath } from '../config';
 
 /**
  * Check if R2 is already mounted by looking at the mount table
  */
-async function isR2Mounted(sandbox: Sandbox): Promise<boolean> {
+async function isR2Mounted(sandbox: Sandbox, mountPath: string): Promise<boolean> {
   try {
-    const proc = await sandbox.startProcess(`mount | grep "s3fs on ${R2_MOUNT_PATH}"`);
+    const proc = await sandbox.startProcess(`mount | grep "s3fs on ${mountPath}"`);
     // Wait for the command to complete
     let attempts = 0;
     while (proc.status === 'running' && attempts < 10) {
@@ -27,7 +27,7 @@ async function isR2Mounted(sandbox: Sandbox): Promise<boolean> {
 
 /**
  * Mount R2 bucket for persistent storage
- * 
+ *
  * @param sandbox - The sandbox instance
  * @param env - Worker environment bindings
  * @returns true if mounted successfully, false otherwise
@@ -39,16 +39,19 @@ export async function mountR2Storage(sandbox: Sandbox, env: MoltbotEnv): Promise
     return false;
   }
 
+  // Get environment-specific bucket name and mount path
+  const bucketName = getR2BucketName(env.ENVIRONMENT);
+  const mountPath = getR2MountPath(env.ENVIRONMENT);
+
   // Check if already mounted first - this avoids errors and is faster
-  if (await isR2Mounted(sandbox)) {
-    console.log('R2 bucket already mounted at', R2_MOUNT_PATH);
+  if (await isR2Mounted(sandbox, mountPath)) {
+    console.log(`R2 bucket already mounted at ${mountPath}`);
     return true;
   }
 
-  const bucketName = getR2BucketName(env);
   try {
-    console.log('Mounting R2 bucket', bucketName, 'at', R2_MOUNT_PATH);
-    await sandbox.mountBucket(bucketName, R2_MOUNT_PATH, {
+    console.log(`Mounting R2 bucket "${bucketName}" at ${mountPath}`);
+    await sandbox.mountBucket(bucketName, mountPath, {
       endpoint: `https://${env.CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
       // Pass credentials explicitly since we use R2_* naming instead of AWS_*
       credentials: {
@@ -61,13 +64,13 @@ export async function mountR2Storage(sandbox: Sandbox, env: MoltbotEnv): Promise
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.log('R2 mount error:', errorMessage);
-    
+
     // Check again if it's mounted - the error might be misleading
-    if (await isR2Mounted(sandbox)) {
+    if (await isR2Mounted(sandbox, mountPath)) {
       console.log('R2 bucket is mounted despite error');
       return true;
     }
-    
+
     // Don't fail if mounting fails - moltbot can still run without persistent storage
     console.error('Failed to mount R2 bucket:', err);
     return false;

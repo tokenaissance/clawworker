@@ -65,19 +65,32 @@ npm run deploy:dev
 # npm run deploy:prod
 ```
 
-After deploying, open the Control UI with your token:
+After deploying, you can access the Control UI:
 
 ```
 # Development environment
-https://paramita-cloud-development.your-subdomain.workers.dev/?token=YOUR_GATEWAY_TOKEN
+https://paramita-cloud-development.your-subdomain.workers.dev/
 
 # Production environment
-https://paramita-cloud-production.your-subdomain.workers.dev/?token=YOUR_GATEWAY_TOKEN
+https://paramita-cloud-production.your-subdomain.workers.dev/
 ```
 
-Replace `your-subdomain` with your Cloudflare account subdomain and `YOUR_GATEWAY_TOKEN` with the token you generated above.
+Replace `your-subdomain` with your Cloudflare account subdomain.
 
 **Note:** The first request may take 1-2 minutes while the container starts.
+
+### Automatic Parameter Injection
+
+The Worker **automatically injects** the gateway token when forwarding requests to the Gateway container. You don't need to manually add `?token=xxx` to URLs anymore.
+
+**How it works**:
+1. You access: `https://worker.example.com/`
+2. Worker automatically injects: `?token=xxx` when forwarding to Gateway
+3. Gateway receives: `http://localhost:8787/?token=xxx`
+
+This happens **server-side**, so your token is never exposed in your browser's address bar. The gateway token acts as the second layer of security (after Cloudflare Access) to ensure requests are coming from your Worker and not directly to the Gateway.
+
+For more details about the parameter injection system, see the [Parameter Injection Documentation](docs/parameter-injection.md).
 
 > **Important:** You will not be able to use the Control UI until you complete the following steps. You MUST:
 > 1. [Set up Cloudflare Access](#setting-up-the-admin-ui) to protect the admin UI
@@ -189,6 +202,8 @@ For local development only, set `DEV_MODE=true` in `.dev.vars` to skip Cloudflar
 ## Persistent Storage (R2)
 
 By default, moltbot data (configs, paired devices, conversation history) is lost when the container restarts. To enable persistent storage across sessions, configure R2:
+
+> **Note on Environment Isolation:** Each environment (development/production) uses its own isolated R2 bucket and mount path to prevent data conflicts. See the [R2 Environment Isolation documentation](docs/r2-environment-isolation.md) for details.
 
 ### 1. Create R2 API Token
 
@@ -422,13 +437,20 @@ The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 
 ### Authentication Layers
 
-OpenClaw in Cloudflare Sandbox uses multiple authentication layers:
+OpenClaw in Cloudflare Sandbox uses a three-layer security model (defense-in-depth):
 
-1. **Cloudflare Access** - Protects admin routes (`/_admin/`, `/api/*`, `/debug/*`). Only authenticated users can manage devices.
+1. **Cloudflare Access (Layer 1)** - Protects admin routes (`/_admin/`, `/api/*`, `/debug/*`). Only authenticated users can access the Worker. This validates user identity.
 
-2. **Gateway Token** - Required to access the Control UI. Pass via `?token=` query parameter. Keep this secret.
+2. **Gateway Token (Layer 2)** - **Automatically injected** by the Worker when forwarding requests to the Gateway container. This ensures requests are coming from your Worker and not directly to the Gateway container. The token is stored securely in Worker environment variables and never exposed to users.
 
-3. **Device Pairing** - Each device (browser, CLI, chat platform DM) must be explicitly approved via the admin UI before it can interact with the assistant. This is the default "pairing" DM policy.
+3. **Device Pairing (Layer 3)** - Each device (browser, CLI, chat platform DM) must be explicitly approved via the admin UI before it can interact with the assistant. This is the default "pairing" DM policy and provides per-device authorization.
+
+**Why three layers?**
+- **Layer 1** prevents unauthorized users from accessing your Worker
+- **Layer 2** prevents bypassing the Worker and directly attacking the Gateway container
+- **Layer 3** prevents one compromised device from affecting others
+
+For more details, see the [Parameter Injection Documentation](docs/parameter-injection.md) and [Architecture Explanation](docs/architecture-explanation.md).
 
 ## Troubleshooting
 
@@ -453,6 +475,11 @@ OpenClaw in Cloudflare Sandbox uses multiple authentication layers:
 For detailed deployment and configuration guides, see the [docs/](docs/) directory:
 
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Complete guide for deploying to production and development environments
+- **[R2 Environment Isolation](docs/r2-environment-isolation.md)** - R2 bucket mount path environment isolation implementation
+- **[Parameter Injection](docs/parameter-injection.md)** - URL parameter injection system design and API reference
+- **[Architecture Explanation](docs/architecture-explanation.md)** - Detailed architecture explanation (Chinese)
+- **[Security Architecture](docs/security/README.md)** - Three-layer security model overview
+- **[Device Pairing](docs/security/device-pairing.md)** - Device pairing mechanism details
 - **[Documentation Index](docs/README.md)** - Full documentation index including planning documents
 
 ## Links
