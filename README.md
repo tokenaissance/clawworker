@@ -35,46 +35,92 @@ This project packages OpenClaw to run in a [Cloudflare Sandbox](https://develope
 
 ![moltworker architecture](./assets/architecture.png)
 
+## Multi-Tenant Deployment
+
+For deploying isolated instances for multiple users/organizations, use the multi-tenant deployment script:
+
+```bash
+# Deploy a new tenant
+npm run deploy:tenant -- --tenant=alice
+
+# With custom instance type
+npm run deploy:tenant -- --tenant=alice --instance-type=standard-4
+
+# Preview without deploying
+npm run deploy:tenant -- --tenant=alice --dry-run
+```
+
+Each tenant gets completely isolated resources:
+- Worker: `paramita-cloud-{tenant}`
+- R2 Bucket: `moltbot-data-{tenant}`
+- Container: `moltbot-{tenant}`
+
+For detailed documentation, see [Multi-Tenant Deployment Guide](docs/multi-tenant-deployment.md).
+
 ## Quick Start
 
 _Cloudflare Sandboxes are available on the [Workers Paid plan](https://dash.cloudflare.com/?to=/:account/workers/plans)._
+
+This project supports multiple deployment environments. You can deploy to **development** (for testing) or **production** (for live deployment). Secrets must be configured separately for each environment.
 
 ```bash
 # Install dependencies
 npm install
 
-# Set your API key (direct Anthropic access)
-npx wrangler secret put ANTHROPIC_API_KEY
+# Set your API key for development environment (direct Anthropic access)
+npx wrangler secret put ANTHROPIC_API_KEY --env development
 
 # Or use AI Gateway instead (see "Optional: Cloudflare AI Gateway" below)
-# npx wrangler secret put AI_GATEWAY_API_KEY
-# npx wrangler secret put AI_GATEWAY_BASE_URL
+# npx wrangler secret put AI_GATEWAY_API_KEY --env development
+# npx wrangler secret put AI_GATEWAY_BASE_URL --env development
 
 # Generate and set a gateway token (required for remote access)
 # Save this token - you'll need it to access the Control UI
-export MOLTBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)
-echo "Your gateway token: $MOLTBOT_GATEWAY_TOKEN"
-echo "$MOLTBOT_GATEWAY_TOKEN" | npx wrangler secret put MOLTBOT_GATEWAY_TOKEN
+export CLAWDBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)
+echo "Your gateway token: $CLAWDBOT_GATEWAY_TOKEN"
+echo "$CLAWDBOT_GATEWAY_TOKEN" | npx wrangler secret put CLAWDBOT_GATEWAY_TOKEN --env development
 
-# Deploy
-npm run deploy
+# Deploy to development environment (recommended for first deployment)
+npm run deploy:dev
+
+# Or deploy to production environment
+# npm run deploy:prod
 ```
 
-After deploying, open the Control UI with your token:
+After deploying, you can access the Control UI:
 
 ```
-https://your-worker.workers.dev/?token=YOUR_GATEWAY_TOKEN
+# Development environment
+https://paramita-cloud-development.your-subdomain.workers.dev/
+
+# Production environment
+https://paramita-cloud-production.your-subdomain.workers.dev/
 ```
 
-Replace `your-worker` with your actual worker subdomain and `YOUR_GATEWAY_TOKEN` with the token you generated above.
+Replace `your-subdomain` with your Cloudflare account subdomain.
 
 **Note:** The first request may take 1-2 minutes while the container starts.
+
+### Automatic Parameter Injection
+
+The Worker **automatically injects** the gateway token when forwarding requests to the Gateway container. You don't need to manually add `?token=xxx` to URLs anymore.
+
+**How it works**:
+1. You access: `https://worker.example.com/`
+2. Worker automatically injects: `?token=xxx` when forwarding to Gateway
+3. Gateway receives: `http://localhost:8787/?token=xxx`
+
+This happens **server-side**, so your token is never exposed in your browser's address bar. The gateway token acts as the second layer of security (after Cloudflare Access) to ensure requests are coming from your Worker and not directly to the Gateway.
+
+For more details about the parameter injection system, see the [Parameter Injection Documentation](docs/parameter-injection.md).
 
 > **Important:** You will not be able to use the Control UI until you complete the following steps. You MUST:
 > 1. [Set up Cloudflare Access](#setting-up-the-admin-ui) to protect the admin UI
 > 2. [Pair your device](#device-pairing) via the admin UI at `/_admin/`
 
 You'll also likely want to [enable R2 storage](#persistent-storage-r2) so your paired devices and conversation history persist across container restarts (optional but recommended).
+
+For more detailed information about environment configuration and deployment options, see the [Deployment Guide](docs/DEPLOYMENT.md).
 
 ## Setting Up the Admin UI
 
@@ -87,7 +133,7 @@ To use the admin UI at `/_admin/` for device management, you need to:
 The easiest way to protect your worker is using the built-in Cloudflare Access integration for workers.dev:
 
 1. Go to the [Workers & Pages dashboard](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
-2. Select your Worker (e.g., `moltbot-sandbox`)
+2. Select your Worker (e.g., `clawbot-sandbox`)
 3. In **Settings**, under **Domains & Routes**, in the `workers.dev` row, click the meatballs menu (`...`)
 4. Click **Enable Cloudflare Access**
 5. Click **Manage Cloudflare Access** to configure who can access:
@@ -100,11 +146,16 @@ The easiest way to protect your worker is using the built-in Cloudflare Access i
 After enabling Cloudflare Access, set the secrets so the worker can validate JWTs:
 
 ```bash
+# For development environment
 # Your Cloudflare Access team domain (e.g., "myteam.cloudflareaccess.com")
-npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
+npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env development
 
 # The Application Audience (AUD) tag from your Access application that you copied in the step above
-npx wrangler secret put CF_ACCESS_AUD
+npx wrangler secret put CF_ACCESS_AUD --env development
+
+# For production environment, repeat with --env production
+# npx wrangler secret put CF_ACCESS_TEAM_DOMAIN --env production
+# npx wrangler secret put CF_ACCESS_AUD --env production
 ```
 
 You can find your team domain in the [Zero Trust Dashboard](https://one.dash.cloudflare.com/) under **Settings** > **Custom Pages** (it's the subdomain before `.cloudflareaccess.com`).
@@ -112,7 +163,11 @@ You can find your team domain in the [Zero Trust Dashboard](https://one.dash.clo
 ### 3. Redeploy
 
 ```bash
-npm run deploy
+# Deploy to development environment
+npm run deploy:dev
+
+# Or deploy to production environment
+# npm run deploy:prod
 ```
 
 Now visit `/_admin/` and you'll be prompted to authenticate via Cloudflare Access before accessing the admin UI.
@@ -124,7 +179,7 @@ If you prefer more control, you can manually create an Access application:
 1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
 2. Navigate to **Access** > **Applications**
 3. Create a new **Self-hosted** application
-4. Set the application domain to your Worker URL (e.g., `moltbot-sandbox.your-subdomain.workers.dev`)
+4. Set the application domain to your Worker URL (e.g., `clawbot-sandbox.your-subdomain.workers.dev`)
 5. Add paths to protect: `/_admin/*`, `/api/*`, `/debug/*`
 6. Configure your desired identity providers (e.g., email OTP, Google, GitHub)
 7. Copy the **Application Audience (AUD)** tag and set the secrets as shown above
@@ -137,6 +192,8 @@ For local development, create a `.dev.vars` file with:
 DEV_MODE=true               # Skip Cloudflare Access auth + bypass device pairing
 DEBUG_ROUTES=true           # Enable /debug/* routes (optional)
 ```
+
+You can also test with environment-specific configurations using `npm run start:dev` or `npm run start:prod`.
 
 ## Authentication
 
@@ -168,25 +225,34 @@ For local development only, set `DEV_MODE=true` in `.dev.vars` to skip Cloudflar
 
 By default, moltbot data (configs, paired devices, conversation history) is lost when the container restarts. To enable persistent storage across sessions, configure R2:
 
+> **Note on Environment Isolation:** Each environment (development/production) uses its own isolated R2 bucket and mount path to prevent data conflicts. See the [R2 Environment Isolation documentation](docs/r2-environment-isolation.md) for details.
+
 ### 1. Create R2 API Token
+
+First, create the R2 buckets for your environments in the [Cloudflare Dashboard](https://dash.cloudflare.com/):
+- **Development**: `moltbot-data-development`
+- **Production**: `moltbot-data-production`
+
+Then, create an R2 API token:
 
 1. Go to **R2** > **Overview** in the [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. Click **Manage R2 API Tokens**
 3. Create a new token with **Object Read & Write** permissions
-4. Select the `moltbot-data` bucket (created automatically on first deploy)
+4. Select the appropriate bucket for your environment
 5. Copy the **Access Key ID** and **Secret Access Key**
 
 ### 2. Set Secrets
 
 ```bash
-# R2 Access Key ID
-npx wrangler secret put R2_ACCESS_KEY_ID
+# For development environment
+npx wrangler secret put R2_ACCESS_KEY_ID --env development
+npx wrangler secret put R2_SECRET_ACCESS_KEY --env development
+npx wrangler secret put CF_ACCOUNT_ID --env development
 
-# R2 Secret Access Key
-npx wrangler secret put R2_SECRET_ACCESS_KEY
-
-# Your Cloudflare Account ID
-npx wrangler secret put CF_ACCOUNT_ID
+# For production environment
+# npx wrangler secret put R2_ACCESS_KEY_ID --env production
+# npx wrangler secret put R2_SECRET_ACCESS_KEY --env production
+# npx wrangler secret put CF_ACCOUNT_ID --env production
 ```
 
 To find your Account ID: Go to the [Cloudflare Dashboard](https://dash.cloudflare.com/), click the three dots menu next to your account name, and select "Copy Account ID".
@@ -216,8 +282,11 @@ By default, the sandbox container stays alive indefinitely (`SANDBOX_SLEEP_AFTER
 To reduce costs for infrequently used deployments, you can configure the container to sleep after a period of inactivity:
 
 ```bash
-npx wrangler secret put SANDBOX_SLEEP_AFTER
+npx wrangler secret put SANDBOX_SLEEP_AFTER --env development
 # Enter: 10m (or 1h, 30m, etc.)
+
+# For production environment
+# npx wrangler secret put SANDBOX_SLEEP_AFTER --env production
 ```
 
 When the container sleeps, the next request will trigger a cold start. If you have R2 storage configured, your paired devices and data will persist across restarts.
@@ -246,23 +315,23 @@ Debug endpoints are available at `/debug/*` when enabled (requires `DEBUG_ROUTES
 ### Telegram
 
 ```bash
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npm run deploy
+npx wrangler secret put TELEGRAM_BOT_TOKEN --env development
+npm run deploy:dev
 ```
 
 ### Discord
 
 ```bash
-npx wrangler secret put DISCORD_BOT_TOKEN
-npm run deploy
+npx wrangler secret put DISCORD_BOT_TOKEN --env development
+npm run deploy:dev
 ```
 
 ### Slack
 
 ```bash
-npx wrangler secret put SLACK_BOT_TOKEN
-npx wrangler secret put SLACK_APP_TOKEN
-npm run deploy
+npx wrangler secret put SLACK_BOT_TOKEN --env development
+npx wrangler secret put SLACK_APP_TOKEN --env development
+npm run deploy:dev
 ```
 
 ## Optional: Browser Automation (CDP)
@@ -274,21 +343,21 @@ This worker includes a Chrome DevTools Protocol (CDP) shim that enables browser 
 1. Set a shared secret for authentication:
 
 ```bash
-npx wrangler secret put CDP_SECRET
+npx wrangler secret put CDP_SECRET --env development
 # Enter a secure random string
 ```
 
 2. Set your worker's public URL:
 
 ```bash
-npx wrangler secret put WORKER_URL
-# Enter: https://your-worker.workers.dev
+npx wrangler secret put WORKER_URL --env development
+# Enter: https://paramita-cloud-development.your-subdomain.workers.dev
 ```
 
 3. Redeploy:
 
 ```bash
-npm run deploy
+npm run deploy:dev
 ```
 
 ### Endpoints
@@ -340,22 +409,26 @@ You'll find the base URL on the Overview tab of your newly created gateway. At t
 
 ```bash
 # Your provider's API key (e.g., Anthropic API key)
-npx wrangler secret put AI_GATEWAY_API_KEY
+npx wrangler secret put AI_GATEWAY_API_KEY --env development
 
 # Your AI Gateway endpoint URL
-npx wrangler secret put AI_GATEWAY_BASE_URL
+npx wrangler secret put AI_GATEWAY_BASE_URL --env development
 # Enter: https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
 ```
 
 4. Redeploy:
 
 ```bash
-npm run deploy
+npm run deploy:dev
 ```
 
 The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 
 ## All Secrets Reference
+
+**Note on Environments:** All secrets should be configured separately for each deployment environment using the `--env` flag. For example:
+- Development: `npx wrangler secret put SECRET_NAME --env development`
+- Production: `npx wrangler secret put SECRET_NAME --env production`
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -366,7 +439,7 @@ The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 | `OPENAI_API_KEY` | No | OpenAI API key (alternative provider) |
 | `CF_ACCESS_TEAM_DOMAIN` | Yes* | Cloudflare Access team domain (required for admin UI) |
 | `CF_ACCESS_AUD` | Yes* | Cloudflare Access application audience (required for admin UI) |
-| `MOLTBOT_GATEWAY_TOKEN` | Yes | Gateway token for authentication (pass via `?token=` query param) |
+| `CLAWDBOT_GATEWAY_TOKEN` | Yes | Gateway token for authentication (pass via `?token=` query param) |
 | `DEV_MODE` | No | Set to `true` to skip CF Access auth + device pairing (local dev only) |
 | `DEBUG_ROUTES` | No | Set to `true` to enable `/debug/*` routes |
 | `SANDBOX_SLEEP_AFTER` | No | Container sleep timeout: `never` (default) or duration like `10m`, `1h` |
@@ -386,13 +459,20 @@ The `AI_GATEWAY_*` variables take precedence over `ANTHROPIC_*` if both are set.
 
 ### Authentication Layers
 
-OpenClaw in Cloudflare Sandbox uses multiple authentication layers:
+OpenClaw in Cloudflare Sandbox uses a three-layer security model (defense-in-depth):
 
-1. **Cloudflare Access** - Protects admin routes (`/_admin/`, `/api/*`, `/debug/*`). Only authenticated users can manage devices.
+1. **Cloudflare Access (Layer 1)** - Protects admin routes (`/_admin/`, `/api/*`, `/debug/*`). Only authenticated users can access the Worker. This validates user identity.
 
-2. **Gateway Token** - Required to access the Control UI. Pass via `?token=` query parameter. Keep this secret.
+2. **Gateway Token (Layer 2)** - **Automatically injected** by the Worker when forwarding requests to the Gateway container. This ensures requests are coming from your Worker and not directly to the Gateway container. The token is stored securely in Worker environment variables and never exposed to users.
 
-3. **Device Pairing** - Each device (browser, CLI, chat platform DM) must be explicitly approved via the admin UI before it can interact with the assistant. This is the default "pairing" DM policy.
+3. **Device Pairing (Layer 3)** - Each device (browser, CLI, chat platform DM) must be explicitly approved via the admin UI before it can interact with the assistant. This is the default "pairing" DM policy and provides per-device authorization.
+
+**Why three layers?**
+- **Layer 1** prevents unauthorized users from accessing your Worker
+- **Layer 2** prevents bypassing the Worker and directly attacking the Gateway container
+- **Layer 3** prevents one compromised device from affecting others
+
+For more details, see the [Parameter Injection Documentation](docs/parameter-injection.md) and [Architecture Explanation](docs/architecture-explanation.md).
 
 ## Troubleshooting
 
@@ -411,6 +491,19 @@ OpenClaw in Cloudflare Sandbox uses multiple authentication layers:
 **Devices not appearing in admin UI:** Device list commands take 10-15 seconds due to WebSocket connection overhead. Wait and refresh.
 
 **WebSocket issues in local development:** `wrangler dev` has known limitations with WebSocket proxying through the sandbox. HTTP requests work but WebSocket connections may fail. Deploy to Cloudflare for full functionality.
+
+## Documentation
+
+For detailed deployment and configuration guides, see the [docs/](docs/) directory:
+
+- **[Multi-Tenant Deployment](docs/multi-tenant-deployment.md)** - Deploy isolated instances for multiple tenants
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Complete guide for deploying to production and development environments
+- **[R2 Environment Isolation](docs/r2-environment-isolation.md)** - R2 bucket mount path environment isolation implementation
+- **[Parameter Injection](docs/parameter-injection.md)** - URL parameter injection system design and API reference
+- **[Architecture Explanation](docs/architecture-explanation.md)** - Detailed architecture explanation (Chinese)
+- **[Security Architecture](docs/security/README.md)** - Three-layer security model overview
+- **[Device Pairing](docs/security/device-pairing.md)** - Device pairing mechanism details
+- **[Documentation Index](docs/README.md)** - Full documentation index including planning documents
 
 ## Links
 

@@ -8,6 +8,7 @@ build-info.json
 # Wrangler
 .wrangler/
 .dev.vars
+wrangler.tenant-*.jsonc
 
 # Logs
 *.log

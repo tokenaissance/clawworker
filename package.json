@@ -1,5 +1,5 @@
 {
-  "name": "moltbot-sandbox",
+  "name": "paramita-cloud",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -7,8 +7,13 @@
   "scripts": {
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
+    "deploy:prod": "npm run build && wrangler deploy --config wrangler.jsonc --env production",
+    "deploy:dev": "npm run build && wrangler deploy --config wrangler.jsonc --env development",
+    "deploy:tenant": "npx tsx scripts/deploy-tenant.ts",
     "dev": "vite dev",
     "start": "wrangler dev",
+    "start:prod": "wrangler dev --config wrangler.jsonc --env production",
+    "start:dev": "wrangler dev --config wrangler.jsonc --env development",
     "types": "wrangler types",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -43,7 +48,7 @@
       "ANTHROPIC_API_KEY": {
         "description": "Your [Anthropic API key](https://console.anthropic.com/)."
       },
-      "MOLTBOT_GATEWAY_TOKEN": {
+      "CLAWDBOT_GATEWAY_TOKEN": {
         "description": "Token for gateway access. Generate with: openssl rand -hex 32"
       }
     }

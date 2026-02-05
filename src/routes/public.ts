@@ -15,7 +15,7 @@ const publicRoutes = new Hono<AppEnv>();
 publicRoutes.get('/sandbox-health', (c) => {
   return c.json({
     status: 'ok',
-    service: 'moltbot-sandbox',
+    service: 'clawbot-sandbox',
     gateway_port: MOLTBOT_PORT,
   });
 });
@@ -33,13 +33,13 @@ publicRoutes.get('/logo-small.png', (c) => {
 // GET /api/status - Public health check for gateway status (no auth required)
 publicRoutes.get('/api/status', async (c) => {
   const sandbox = c.get('sandbox');
-  
+
   try {
     const process = await findExistingMoltbotProcess(sandbox);
     if (!process) {
       return c.json({ ok: false, status: 'not_running' });
     }
-    
+
     // Process exists, check if it's actually responding
     // Try to reach the gateway with a short timeout
     try {

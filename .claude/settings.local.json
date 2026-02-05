@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(git add:*)",
+      "Bash(tree:*)",
+      "Bash(npm run deploy:dev:*)",
+      "Bash(npx wrangler deploy:*)",
+      "Bash(npx wrangler:*)"
+    ]
+  }
+}
