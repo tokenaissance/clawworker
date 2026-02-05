@@ -20,6 +20,10 @@
   - 部署命令
   - Secret 配置
   - 故障排查
+- **[multi-tenant-deployment.md](multi-tenant-deployment.md)** - 多租户部署指南
+  - 动态部署脚本使用
+  - 租户隔离架构
+  - 命名规则和配置选项
 - **[r2-environment-isolation.md](r2-environment-isolation.md)** - R2 存储环境隔离
   - 问题陈述和解决方案
   - 动态挂载路径实现

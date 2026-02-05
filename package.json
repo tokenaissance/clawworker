@@ -9,6 +9,7 @@
     "deploy": "npm run build && wrangler deploy",
     "deploy:prod": "npm run build && wrangler deploy --config wrangler.jsonc --env production",
     "deploy:dev": "npm run build && wrangler deploy --config wrangler.jsonc --env development",
+    "deploy:tenant": "npx tsx scripts/deploy-tenant.ts",
     "dev": "vite dev",
     "start": "wrangler dev",
     "start:prod": "wrangler dev --config wrangler.jsonc --env production",

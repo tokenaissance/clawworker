@@ -35,6 +35,28 @@ This project packages OpenClaw to run in a [Cloudflare Sandbox](https://develope
 
 ![moltworker architecture](./assets/architecture.png)
 
+## Multi-Tenant Deployment
+
+For deploying isolated instances for multiple users/organizations, use the multi-tenant deployment script:
+
+```bash
+# Deploy a new tenant
+npm run deploy:tenant -- --tenant=alice
+
+# With custom instance type
+npm run deploy:tenant -- --tenant=alice --instance-type=standard-4
+
+# Preview without deploying
+npm run deploy:tenant -- --tenant=alice --dry-run
+```
+
+Each tenant gets completely isolated resources:
+- Worker: `paramita-cloud-{tenant}`
+- R2 Bucket: `moltbot-data-{tenant}`
+- Container: `moltbot-{tenant}`
+
+For detailed documentation, see [Multi-Tenant Deployment Guide](docs/multi-tenant-deployment.md).
+
 ## Quick Start
 
 _Cloudflare Sandboxes are available on the [Workers Paid plan](https://dash.cloudflare.com/?to=/:account/workers/plans)._
@@ -474,6 +496,7 @@ For more details, see the [Parameter Injection Documentation](docs/parameter-inj
 
 For detailed deployment and configuration guides, see the [docs/](docs/) directory:
 
+- **[Multi-Tenant Deployment](docs/multi-tenant-deployment.md)** - Deploy isolated instances for multiple tenants
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Complete guide for deploying to production and development environments
 - **[R2 Environment Isolation](docs/r2-environment-isolation.md)** - R2 bucket mount path environment isolation implementation
 - **[Parameter Injection](docs/parameter-injection.md)** - URL parameter injection system design and API reference
