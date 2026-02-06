@@ -231,14 +231,54 @@ if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
     config.channels.slack.enabled = true;
 }
 
-// Base URL override (e.g., for Cloudflare AI Gateway)
+// Base URL override (e.g., for Cloudflare AI Gateway or OpenRouter)
 // Usage: Set AI_GATEWAY_BASE_URL or ANTHROPIC_BASE_URL to your endpoint like:
 //   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic
 //   https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+//   https://openrouter.ai/api/v1
 const baseUrl = (process.env.AI_GATEWAY_BASE_URL || process.env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '');
+const isOpenRouter = baseUrl.includes('openrouter.ai');
 const isOpenAI = baseUrl.endsWith('/openai');
 
-if (isOpenAI) {
+if (isOpenRouter) {
+    // OpenRouter uses OpenAI-compatible API
+    // Reference: https://openrouter.ai/docs/guides/guides/openclaw-integration
+    console.log('Configuring OpenRouter provider with base URL:', baseUrl);
+
+    // Ensure API key is available
+    if (!process.env.AI_GATEWAY_API_KEY) {
+        console.error('ERROR: AI_GATEWAY_API_KEY is required for OpenRouter but not set');
+        process.exit(1);
+    }
+
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers.openai = {
+        baseUrl: baseUrl,
+        apiKey: process.env.AI_GATEWAY_API_KEY,
+        api: 'openai-responses',
+        models: [
+            { id: 'anthropic/claude-opus-4', name: 'Claude Opus 4', contextWindow: 200000 },
+            { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', contextWindow: 200000 },
+            { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', contextWindow: 200000 },
+            { id: 'openai/gpt-4o', name: 'GPT-4o', contextWindow: 128000 },
+            { id: 'openai/o1', name: 'OpenAI o1', contextWindow: 200000 },
+            { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash (Free)', contextWindow: 1000000 },
+        ]
+    };
+
+    // Add models to the allowlist so they appear in /models
+    config.agents.defaults.models = config.agents.defaults.models || {};
+    config.agents.defaults.models['openai/anthropic/claude-opus-4'] = { alias: 'Claude Opus 4' };
+    config.agents.defaults.models['openai/anthropic/claude-sonnet-4'] = { alias: 'Claude Sonnet 4' };
+    config.agents.defaults.models['openai/anthropic/claude-3.5-sonnet'] = { alias: 'Claude 3.5 Sonnet' };
+    config.agents.defaults.models['openai/openai/gpt-4o'] = { alias: 'GPT-4o' };
+    config.agents.defaults.models['openai/openai/o1'] = { alias: 'OpenAI o1' };
+    config.agents.defaults.models['openai/google/gemini-2.0-flash-exp:free'] = { alias: 'Gemini 2.0 Flash' };
+    config.agents.defaults.model.primary = 'openai/anthropic/claude-sonnet-4';
+
+    console.log('OpenRouter configured with API key:', process.env.AI_GATEWAY_API_KEY.substring(0, 20) + '...');
+} else if (isOpenAI) {
     // Create custom openai provider config with baseUrl override
     // Omit apiKey so moltbot falls back to OPENAI_API_KEY env var
     console.log('Configuring OpenAI provider with base URL:', baseUrl);
