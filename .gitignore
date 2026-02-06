@@ -10,6 +10,14 @@ build-info.json
 .dev.vars
 wrangler.tenant-*.jsonc
 
+# Deployment records (per-tenant build tracking)
+.deployment-*.json
+
+# Database files (contains sensitive API keys and user data)
+*.db
+*.db-shm
+*.db-wal
+
 # Logs
 *.log
 npm-debug.log*
