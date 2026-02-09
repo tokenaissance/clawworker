@@ -24,6 +24,10 @@
   - 动态部署脚本使用
   - 租户隔离架构
   - 命名规则和配置选项
+- **[openrouter/README.md](openrouter/README.md)** - OpenRouter 多租户 API Key 管理
+  - 用户 Provisioning 脚本
+  - API Key 生命周期管理
+  - 费用隔离和额度控制
 - **[r2-environment-isolation.md](r2-environment-isolation.md)** - R2 存储环境隔离
   - 问题陈述和解决方案
   - 动态挂载路径实现

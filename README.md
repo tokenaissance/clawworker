@@ -497,6 +497,7 @@ For more details, see the [Parameter Injection Documentation](docs/parameter-inj
 For detailed deployment and configuration guides, see the [docs/](docs/) directory:
 
 - **[Multi-Tenant Deployment](docs/multi-tenant-deployment.md)** - Deploy isolated instances for multiple tenants
+- **[OpenRouter Multi-Tenant](docs/openrouter/README.md)** - OpenRouter API Key management for multi-tenant deployments
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Complete guide for deploying to production and development environments
 - **[R2 Environment Isolation](docs/r2-environment-isolation.md)** - R2 bucket mount path environment isolation implementation
 - **[Parameter Injection](docs/parameter-injection.md)** - URL parameter injection system design and API reference

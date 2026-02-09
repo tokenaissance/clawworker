@@ -1035,34 +1035,59 @@ async function main(): Promise<void> {
       autoValue?: string
     ): Promise<void> {
       if (existingSecrets.includes(key)) {
-        const overwrite = await promptConfirm(rl, `${key} already exists. Overwrite?`, false);
-        if (!overwrite) {
-          console.log(`[Secret] Skipping ${key} (keeping existing value)`);
-          skippedSecrets.push(key);
-          return;
+        // Secret exists, prompt with option to keep or update
+        let promptText: string;
+        let defaultValue: string | undefined;
+
+        if (autoValue !== undefined) {
+          // Show preview of new auto-value
+          const preview = autoValue.length > 20 ? autoValue.slice(0, 20) + '...' : autoValue;
+          promptText = `${key} (press Enter to use new value: ${preview}, or enter custom value)`;
+          defaultValue = autoValue;
+        } else {
+          promptText = `${key} (press Enter to keep existing, or enter new value)`;
+          defaultValue = ''; // Empty means keep existing
         }
-      }
-      if (autoValue !== undefined) {
-        secrets[key] = autoValue;
+
+        const input = await promptOptional(rl, promptText, defaultValue);
+
+        if (input && input !== '') {
+          secrets[key] = input;
+          console.log(`[Secret] Updating ${key}`);
+        } else {
+          console.log(`[Secret] Keeping existing ${key}`);
+          skippedSecrets.push(key);
+        }
       } else {
-        secrets[key] = await promptFn();
+        // Secret doesn't exist, collect it normally
+        if (autoValue !== undefined) {
+          secrets[key] = autoValue;
+        } else {
+          secrets[key] = await promptFn();
+        }
       }
     }
 
     // AI Gateway secrets
+    // Always prompt for these if they exist, or set them if we have a new API key
     if (apiKey) {
+      // We have a new API key, offer to set it
       await collectSecret('AI_GATEWAY_API_KEY', async () => apiKey, apiKey);
       await collectSecret('AI_GATEWAY_BASE_URL', async () => 'https://openrouter.ai/api/v1', 'https://openrouter.ai/api/v1');
+    } else if (existingSecrets.includes('AI_GATEWAY_API_KEY') || existingSecrets.includes('AI_GATEWAY_BASE_URL')) {
+      // Secrets exist but we don't have a new key, still ask if user wants to update
+      await collectSecret('AI_GATEWAY_API_KEY', async () => promptPassword(rl, 'AI_GATEWAY_API_KEY (press Enter to keep existing, or enter new key)'));
+      await collectSecret('AI_GATEWAY_BASE_URL', async () => prompt(rl, 'AI_GATEWAY_BASE_URL (press Enter to keep existing, or enter new URL)', 'https://openrouter.ai/api/v1'));
     }
 
     // Use gateway token from database
     if (existingSecrets.includes('CLAWDBOT_GATEWAY_TOKEN')) {
-      const overwrite = await promptConfirm(rl, 'CLAWDBOT_GATEWAY_TOKEN already exists. Use token from database?', true);
-      if (overwrite) {
-        secrets.CLAWDBOT_GATEWAY_TOKEN = gatewayToken;
-        console.log(`[Gateway] Using gateway token from database: ${gatewayToken.slice(0, 16)}...`);
+      const newValue = await promptOptional(rl, 'CLAWDBOT_GATEWAY_TOKEN (press Enter to keep existing, or enter new token)');
+      if (newValue) {
+        secrets.CLAWDBOT_GATEWAY_TOKEN = newValue;
+        console.log(`[Gateway] Using custom gateway token: ${newValue.slice(0, 16)}...`);
       } else {
-        console.log('[Secret] Keeping existing CLAWDBOT_GATEWAY_TOKEN in Worker');
+        console.log(`[Gateway] Keeping existing CLAWDBOT_GATEWAY_TOKEN in Worker`);
         skippedSecrets.push('CLAWDBOT_GATEWAY_TOKEN');
       }
     } else {
