@@ -179,7 +179,7 @@ The script will:
 | `--name=<name>` | (required) | User display name |
 | `--tenant=<name>` | (from email) | Override tenant name |
 | `--instance-type=<type>` | `standard-1` | Container instance type |
-| `--limit=<cents>` | `1000` | OpenRouter credit limit in cents ($10 default) |
+| `--limit=<cents>` | `500` | OpenRouter credit limit in cents ($5 default) |
 | `--skip-provision` | `false` | Skip OpenRouter API key creation |
 | `--dry-run` | `false` | Preview without deploying |
 | `--force-build` | `false` | Force Docker rebuild even if no changes detected |

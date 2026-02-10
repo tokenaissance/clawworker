@@ -37,7 +37,7 @@ export OPENROUTER_PROVISIONING_KEY=sk-or-v1-xxx
 # 创建用户和 API Key
 npm run provision-user -- --email=user@example.com --name="User Name"
 
-# 指定额度限制（单位：美分，默认 1000 = $10）
+# 指定额度限制（单位：美分，默认 500 = $5）
 npm run provision-user -- --email=user@example.com --name="User Name" --limit=500
 ```
 
@@ -60,7 +60,7 @@ wrangler secret put AI_GATEWAY_BASE_URL --name paramita-cloud-<tenant>
 |------|------|------|------|
 | `--email` | 是 | 用户邮箱（作为 Key 名称） | `user@example.com` |
 | `--name` | 是 | 用户显示名称 | `"John Doe"` |
-| `--limit` | 否 | 额度限制（美分，默认 1000） | `500` |
+| `--limit` | 否 | 额度限制（美分，默认 500） | `1000` |
 | `--utm-source` | 否 | 获客渠道 | `twitter` |
 | `--locale` | 否 | 用户语言偏好（默认 en） | `zh` |
 
@@ -82,20 +82,47 @@ wrangler secret put AI_GATEWAY_BASE_URL --name paramita-cloud-<tenant>
 | utmSource | TEXT | 获客渠道 |
 | ip | TEXT | 注册 IP |
 | locale | TEXT | 语言偏好 |
+| gatewayToken | TEXT | Gateway 访问令牌 |
 
-### openrouter_keys 表
+### ai_provider_keys 表
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | INTEGER (PK) | 自增主键 |
 | userId | TEXT (FK) | 关联用户 ID |
-| keyHash | TEXT | OpenRouter Key Hash |
+| **provider** | **TEXT** | **AI 提供商 (openrouter, openai, anthropic, cloudflare-gateway)** |
+| **baseUrl** | **TEXT** | **API 基础 URL** |
+| keyHash | TEXT | API Key Hash |
 | keyPrefix | TEXT | Key 前缀（用于显示） |
+| apiKey | TEXT | 完整 API Key |
 | name | TEXT | Key 名称 |
 | limitAmount | INTEGER | 额度限制 |
 | limitReset | TEXT | 重置周期 |
 | disabled | INTEGER | 是否禁用 |
 | createdAt | TEXT | 创建时间 |
+
+**索引：**
+- `idx_ai_provider_keys_userId` - 用户 ID 索引
+- `idx_ai_provider_keys_provider` - 提供商索引
+
+**注意：** 此表支持多个 AI 提供商，不仅限于 OpenRouter。`provider` 字段标识密钥来自哪个提供商，`baseUrl` 字段存储对应的 API 基础 URL。
+
+### user_deployment_configs 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER (PK) | 自增主键 |
+| userId | TEXT (UNIQUE, FK) | 关联用户 ID |
+| cfAccessTeamDomain | TEXT | Cloudflare Access 团队域名 |
+| cfAccessAud | TEXT | Cloudflare Access AUD 标签 |
+| r2AccessKeyId | TEXT | R2 访问密钥 ID |
+| r2SecretAccessKey | TEXT | R2 访问密钥 Secret |
+| cfAccountId | TEXT | Cloudflare 账户 ID |
+| sandboxSleepAfter | TEXT | 容器休眠时间（默认 never） |
+| createdAt | TEXT | 创建时间 |
+| updatedAt | TEXT | 更新时间 |
+
+**注意：** 此表存储用户的 Clawdbot 部署相关配置，这些配置会被同步到 Worker Secrets。
 
 ## OpenRouter 模型配置
 

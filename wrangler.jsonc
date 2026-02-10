@@ -193,5 +193,11 @@
 				]
 			}
 		}
-	}
+	},
+	"r2_buckets": [
+		{
+			"bucket_name": "moltbot-data-98f8bcca-0416-49f1-a565-7e7dfdc70b1a",
+			"binding": "moltbot_data_98f8bcca_0416_49f1_a565_7e7dfdc70b1a"
+		}
+	]
 }

@@ -11,6 +11,7 @@
     "deploy:dev": "npm run build && wrangler deploy --config wrangler.jsonc --env development",
     "deploy:tenant": "npx tsx scripts/deploy-tenant-interactive.ts",
     "provision-user": "npx tsx scripts/provision-user.ts",
+    "manage-users": "npx tsx scripts/manage-users.ts",
     "dev": "vite dev",
     "start": "wrangler dev",
     "start:prod": "wrangler dev --config wrangler.jsonc --env production",

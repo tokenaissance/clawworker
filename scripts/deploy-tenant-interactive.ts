@@ -351,9 +351,10 @@ async function prompt(rl: readline.Interface, question: string, defaultValue?: s
 }
 
 // Prompt for password (hidden input)
-async function promptPassword(rl: readline.Interface, question: string): Promise<string> {
+async function promptPassword(rl: readline.Interface, question: string, defaultValue?: string): Promise<string> {
   return new Promise((resolve) => {
-    process.stdout.write(`${question}: `);
+    const displayQuestion = defaultValue ? `${question} [***hidden***]` : question;
+    process.stdout.write(`${displayQuestion}: `);
 
     // Disable echo
     if (process.stdin.isTTY) {
@@ -369,7 +370,7 @@ async function promptPassword(rl: readline.Interface, question: string): Promise
           process.stdin.setRawMode(false);
         }
         process.stdout.write('\n');
-        resolve(password);
+        resolve(password || defaultValue || '');
       } else if (c === '\u0003') {
         // Ctrl+C
         process.exit(1);
@@ -472,7 +473,7 @@ function parseArgs(): DeployConfig {
     tenant: '', // Will be set from user.id in database
     instanceType: 'standard-1',
     maxInstances: 1,
-    limit: 1000, // Default $10 credit limit
+    limit: 500, // Default $5 credit limit
     dryRun: false,
     skipProvision: false,
     forceBuild: false,
@@ -543,9 +544,11 @@ function initDatabase(dbPath: string): DatabaseType {
   `);
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS openrouter_keys (
+    CREATE TABLE IF NOT EXISTS ai_provider_keys (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'openrouter',
+      baseUrl TEXT NOT NULL,
       keyHash TEXT NOT NULL,
       keyPrefix TEXT,
       apiKey TEXT,
@@ -559,24 +562,29 @@ function initDatabase(dbPath: string): DatabaseType {
   `);
 
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_openrouter_keys_userId ON openrouter_keys(userId)
+    CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_userId ON ai_provider_keys(userId)
   `);
 
-  // Migration: Add gatewayToken column if it doesn't exist
-  try {
-    db.exec(`ALTER TABLE users ADD COLUMN gatewayToken TEXT`);
-    console.log('[DB] Added gatewayToken column to users table');
-  } catch (error) {
-    // Column already exists, ignore error
-  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_provider ON ai_provider_keys(provider)
+  `);
 
-  // Migration: Add apiKey column to openrouter_keys if it doesn't exist
-  try {
-    db.exec(`ALTER TABLE openrouter_keys ADD COLUMN apiKey TEXT`);
-    console.log('[DB] Added apiKey column to openrouter_keys table');
-  } catch (error) {
-    // Column already exists, ignore error
-  }
+  // Create user_deployment_configs table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_deployment_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT NOT NULL UNIQUE,
+      cfAccessTeamDomain TEXT,
+      cfAccessAud TEXT,
+      r2AccessKeyId TEXT,
+      r2SecretAccessKey TEXT,
+      cfAccountId TEXT,
+      sandboxSleepAfter TEXT DEFAULT 'never',
+      createdAt TEXT DEFAULT (datetime('now')),
+      updatedAt TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (userId) REFERENCES users(id)
+    )
+  `);
 
   return db;
 }
@@ -642,8 +650,8 @@ async function getOrCreateOpenRouterKey(
 ): Promise<{ key: string | null; hash: string; isNew: boolean }> {
   // First check if user already has a key in local database
   const existingLocalKey = db.prepare(
-    'SELECT keyHash, keyPrefix, apiKey FROM openrouter_keys WHERE userId = ? AND disabled = 0 ORDER BY createdAt DESC LIMIT 1'
-  ).get(userId) as { keyHash: string; keyPrefix: string; apiKey?: string } | undefined;
+    'SELECT keyHash, keyPrefix, apiKey, provider, baseUrl FROM ai_provider_keys WHERE userId = ? AND provider = ? AND disabled = 0 ORDER BY createdAt DESC LIMIT 1'
+  ).get(userId, 'openrouter') as { keyHash: string; keyPrefix: string; apiKey?: string; provider: string; baseUrl: string } | undefined;
 
   if (existingLocalKey) {
     // Verify the key still exists on OpenRouter
@@ -666,7 +674,7 @@ async function getOrCreateOpenRouterKey(
       }
       // Key doesn't exist on OpenRouter anymore, mark as disabled locally
       console.log(`[OpenRouter] Local key ${existingLocalKey.keyPrefix} no longer exists on OpenRouter`);
-      db.prepare('UPDATE openrouter_keys SET disabled = 1 WHERE keyHash = ?').run(existingLocalKey.keyHash);
+      db.prepare('UPDATE ai_provider_keys SET disabled = 1 WHERE keyHash = ?').run(existingLocalKey.keyHash);
     }
   }
 
@@ -680,12 +688,21 @@ async function getOrCreateOpenRouterKey(
     console.log(`[OpenRouter] Warning: Cannot retrieve full key from OpenRouter API`);
 
     // Save to local database if not already there (without full key)
-    const localExists = db.prepare('SELECT 1 FROM openrouter_keys WHERE keyHash = ?').get(existingRemoteKey.hash);
+    const localExists = db.prepare('SELECT 1 FROM ai_provider_keys WHERE keyHash = ?').get(existingRemoteKey.hash);
     if (!localExists) {
       db.prepare(`
-        INSERT INTO openrouter_keys (userId, keyHash, keyPrefix, name, limitAmount, limitReset, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `).run(userId, existingRemoteKey.hash, 'sk-or-v1-...', email, existingRemoteKey.limit || limit, existingRemoteKey.limitReset || 'monthly');
+        INSERT INTO ai_provider_keys (userId, provider, baseUrl, keyHash, keyPrefix, name, limitAmount, limitReset, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(
+        userId,
+        'openrouter',
+        'https://openrouter.ai/api/v1',
+        existingRemoteKey.hash,
+        'sk-or-v1-...',
+        email,
+        existingRemoteKey.limit || limit,
+        existingRemoteKey.limitReset || 'monthly'
+      );
     }
 
     return { key: null, hash: existingRemoteKey.hash, isNew: false };
@@ -704,9 +721,19 @@ async function getOrCreateOpenRouterKey(
 
   const keyPrefix = response.key.slice(0, 12) + '...';
   db.prepare(`
-    INSERT INTO openrouter_keys (userId, keyHash, keyPrefix, apiKey, name, limitAmount, limitReset, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(userId, response.data.hash, keyPrefix, response.key, email, limit, 'monthly');
+    INSERT INTO ai_provider_keys (userId, provider, baseUrl, keyHash, keyPrefix, apiKey, name, limitAmount, limitReset, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(
+    userId,
+    'openrouter',
+    'https://openrouter.ai/api/v1',
+    response.data.hash,
+    keyPrefix,
+    response.key,
+    email,
+    limit,
+    'monthly'
+  );
 
   console.log(`[OpenRouter] API key created and saved: ${keyPrefix}`);
 
@@ -933,8 +960,6 @@ async function main(): Promise<void> {
       gatewayToken = 'dry-run-gateway-token-' + crypto.randomBytes(16).toString('hex');
     }
 
-    db.close();
-
     // Step 3: Deploy Worker first (before Access configuration)
     console.log('\n' + '-'.repeat(40));
     console.log('Step 2: Deploy Worker');
@@ -1036,27 +1061,31 @@ async function main(): Promise<void> {
     ): Promise<void> {
       if (existingSecrets.includes(key)) {
         // Secret exists, prompt with option to keep or update
-        let promptText: string;
-        let defaultValue: string | undefined;
+        if (autoValue !== undefined && autoValue !== '') {
+          // We have a database default value, show it
+          const preview = autoValue.length > 40 ? autoValue.slice(0, 40) + '...' : autoValue;
+          const promptText = `${key} (press Enter to keep: ${preview}, or enter new value)`;
+          const input = await promptOptional(rl, promptText, autoValue);
 
-        if (autoValue !== undefined) {
-          // Show preview of new auto-value
-          const preview = autoValue.length > 20 ? autoValue.slice(0, 20) + '...' : autoValue;
-          promptText = `${key} (press Enter to use new value: ${preview}, or enter custom value)`;
-          defaultValue = autoValue;
+          if (input && input !== '') {
+            secrets[key] = input;
+            console.log(`[Secret] Updating ${key}`);
+          } else {
+            console.log(`[Secret] Keeping existing ${key}`);
+            skippedSecrets.push(key);
+          }
         } else {
-          promptText = `${key} (press Enter to keep existing, or enter new value)`;
-          defaultValue = ''; // Empty means keep existing
-        }
+          // No database default, just ask if they want to keep existing or enter new
+          const promptText = `${key} (press Enter to keep existing, or enter new value)`;
+          const input = await promptOptional(rl, promptText, '');
 
-        const input = await promptOptional(rl, promptText, defaultValue);
-
-        if (input && input !== '') {
-          secrets[key] = input;
-          console.log(`[Secret] Updating ${key}`);
-        } else {
-          console.log(`[Secret] Keeping existing ${key}`);
-          skippedSecrets.push(key);
+          if (input && input !== '') {
+            secrets[key] = input;
+            console.log(`[Secret] Updating ${key}`);
+          } else {
+            console.log(`[Secret] Keeping existing ${key}`);
+            skippedSecrets.push(key);
+          }
         }
       } else {
         // Secret doesn't exist, collect it normally
@@ -1095,6 +1124,16 @@ async function main(): Promise<void> {
       console.log(`[Gateway] Setting gateway token from database: ${gatewayToken.slice(0, 16)}...`);
     }
 
+    // Query deployment config from database (for lazy loading)
+    const deploymentConfig = db.prepare('SELECT * FROM user_deployment_configs WHERE userId = ?').get(user.id) as {
+      cfAccessTeamDomain?: string;
+      cfAccessAud?: string;
+      r2AccessKeyId?: string;
+      r2SecretAccessKey?: string;
+      cfAccountId?: string;
+      sandboxSleepAfter?: string;
+    } | undefined;
+
     // Cloudflare Access secrets (available after Worker deployment)
     console.log('\n[Access] Now configure Cloudflare Access for your Worker:');
     console.log('  1. Go to Workers & Pages dashboard');
@@ -1102,29 +1141,84 @@ async function main(): Promise<void> {
     console.log('  3. Settings > Domains & Routes > workers.dev row > "..." > Enable Cloudflare Access');
     console.log('  4. Copy the Application Audience (AUD) tag\n');
 
-    await collectSecret('CF_ACCESS_TEAM_DOMAIN', () => prompt(rl, 'CF_ACCESS_TEAM_DOMAIN (e.g., myteam.cloudflareaccess.com)'));
-    await collectSecret('CF_ACCESS_AUD', () => prompt(rl, 'CF_ACCESS_AUD (Application Audience tag from step above)'));
+    // Use database values as defaults if available
+    const defaultCfAccessTeamDomain = deploymentConfig?.cfAccessTeamDomain || '';
+    const defaultCfAccessAud = deploymentConfig?.cfAccessAud || '';
 
-    // Optional R2 secrets
-    console.log('\n[R2] R2 storage secrets (optional, for persistent storage):');
+    await collectSecret('CF_ACCESS_TEAM_DOMAIN', () => prompt(rl, 'CF_ACCESS_TEAM_DOMAIN (e.g., myteam.cloudflareaccess.com)', defaultCfAccessTeamDomain), defaultCfAccessTeamDomain);
+    await collectSecret('CF_ACCESS_AUD', () => prompt(rl, 'CF_ACCESS_AUD (Application Audience tag from step above)', defaultCfAccessAud), defaultCfAccessAud);
+
+    // Required R2 secrets (check database first)
+    console.log('\n[R2] R2 storage secrets (required for persistent storage):');
+
     const r2Exists = existingSecrets.includes('R2_ACCESS_KEY_ID');
     let configureR2 = true;
+
     if (r2Exists) {
-      configureR2 = await promptConfirm(rl, 'R2 secrets already exist. Reconfigure?', false);
+      configureR2 = await promptConfirm(rl, 'R2 secrets already exist in Worker. Reconfigure?', false);
     }
+
     if (configureR2) {
-      const r2KeyId = await promptOptional(rl, 'R2_ACCESS_KEY_ID');
-      if (r2KeyId) {
-        secrets.R2_ACCESS_KEY_ID = r2KeyId;
-        secrets.R2_SECRET_ACCESS_KEY = await promptPassword(rl, 'R2_SECRET_ACCESS_KEY');
-        secrets.CF_ACCOUNT_ID = await prompt(rl, 'CF_ACCOUNT_ID');
-      }
+      // Use database values as defaults if available
+      const defaultR2KeyId = deploymentConfig?.r2AccessKeyId || '';
+      const defaultR2Secret = deploymentConfig?.r2SecretAccessKey || '';
+      const defaultCfAccountId = deploymentConfig?.cfAccountId || '';
+
+      secrets.R2_ACCESS_KEY_ID = await prompt(rl, 'R2_ACCESS_KEY_ID', defaultR2KeyId);
+      secrets.R2_SECRET_ACCESS_KEY = await prompt(rl, 'R2_SECRET_ACCESS_KEY', defaultR2Secret);
+      secrets.CF_ACCOUNT_ID = await prompt(rl, 'CF_ACCOUNT_ID', defaultCfAccountId);
     } else {
       skippedSecrets.push('R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'CF_ACCOUNT_ID');
     }
 
     // Container lifecycle
-    await collectSecret('SANDBOX_SLEEP_AFTER', () => promptOptional(rl, 'SANDBOX_SLEEP_AFTER (e.g., 10m, 1h, never)', 'never'));
+    const defaultSandboxSleepAfter = deploymentConfig?.sandboxSleepAfter || 'never';
+    await collectSecret('SANDBOX_SLEEP_AFTER', () => promptOptional(rl, 'SANDBOX_SLEEP_AFTER (e.g., 10m, 1h, never)', defaultSandboxSleepAfter), defaultSandboxSleepAfter);
+
+    // Update database with all collected deployment configuration
+    if (!config.dryRun) {
+      const now = new Date().toISOString();
+      const existing = db.prepare('SELECT id FROM user_deployment_configs WHERE userId = ?').get(user.id);
+
+      if (existing) {
+        db.prepare(`
+          UPDATE user_deployment_configs
+          SET cfAccessTeamDomain = ?, cfAccessAud = ?,
+              r2AccessKeyId = ?, r2SecretAccessKey = ?, cfAccountId = ?,
+              sandboxSleepAfter = ?, updatedAt = ?
+          WHERE userId = ?
+        `).run(
+          secrets.CF_ACCESS_TEAM_DOMAIN || null,
+          secrets.CF_ACCESS_AUD || null,
+          secrets.R2_ACCESS_KEY_ID || null,
+          secrets.R2_SECRET_ACCESS_KEY || null,
+          secrets.CF_ACCOUNT_ID || null,
+          secrets.SANDBOX_SLEEP_AFTER || 'never',
+          now,
+          user.id
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO user_deployment_configs
+          (userId, cfAccessTeamDomain, cfAccessAud, r2AccessKeyId, r2SecretAccessKey, cfAccountId, sandboxSleepAfter, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          user.id,
+          secrets.CF_ACCESS_TEAM_DOMAIN || null,
+          secrets.CF_ACCESS_AUD || null,
+          secrets.R2_ACCESS_KEY_ID || null,
+          secrets.R2_SECRET_ACCESS_KEY || null,
+          secrets.CF_ACCOUNT_ID || null,
+          secrets.SANDBOX_SLEEP_AFTER || 'never',
+          now,
+          now
+        );
+      }
+      console.log('[DB] Deployment configuration saved to database');
+    }
+
+    // Close database connection
+    db.close();
 
     rl.close();
 

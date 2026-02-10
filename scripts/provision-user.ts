@@ -42,11 +42,14 @@ interface User {
   locale: string;
 }
 
-interface OpenRouterKey {
+interface AIProviderKey {
   id: number;
   userId: string;
+  provider: string;
+  baseUrl: string;
   keyHash: string;
   keyPrefix: string;
+  apiKey?: string;
   name: string;
   limitAmount: number;
   limitReset: string;
@@ -59,7 +62,7 @@ function parseArgs(): UserConfig {
   const config: UserConfig = {
     email: '',
     name: '',
-    limit: 1000, // Default $10 credit limit
+    limit: 500, // Default $5 credit limit
     utmSource: '',
     locale: 'en',
   };
@@ -123,17 +126,21 @@ function initDatabase(dbPath: string): DatabaseType {
       updatedAt TEXT DEFAULT (datetime('now')),
       utmSource TEXT DEFAULT '',
       ip TEXT DEFAULT '',
-      locale TEXT DEFAULT ''
+      locale TEXT DEFAULT '',
+      gatewayToken TEXT
     )
   `);
 
-  // Create openrouter_keys table
+  // Create ai_provider_keys table
   db.exec(`
-    CREATE TABLE IF NOT EXISTS openrouter_keys (
+    CREATE TABLE IF NOT EXISTS ai_provider_keys (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'openrouter',
+      baseUrl TEXT NOT NULL,
       keyHash TEXT NOT NULL,
       keyPrefix TEXT,
+      apiKey TEXT,
       name TEXT,
       limitAmount INTEGER,
       limitReset TEXT,
@@ -143,9 +150,30 @@ function initDatabase(dbPath: string): DatabaseType {
     )
   `);
 
-  // Create index on userId
+  // Create user_deployment_configs table
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_openrouter_keys_userId ON openrouter_keys(userId)
+    CREATE TABLE IF NOT EXISTS user_deployment_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT NOT NULL UNIQUE,
+      cfAccessTeamDomain TEXT,
+      cfAccessAud TEXT,
+      r2AccessKeyId TEXT,
+      r2SecretAccessKey TEXT,
+      cfAccountId TEXT,
+      sandboxSleepAfter TEXT DEFAULT 'never',
+      createdAt TEXT DEFAULT (datetime('now')),
+      updatedAt TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (userId) REFERENCES users(id)
+    )
+  `);
+
+  // Create indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_userId ON ai_provider_keys(userId)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_provider ON ai_provider_keys(provider)
   `);
 
   return db;
@@ -179,10 +207,10 @@ function getOrCreateUser(db: DatabaseType, config: UserConfig): { user: User; is
   return { user: newUser, isNew: true };
 }
 
-function getExistingKey(db: DatabaseType, userId: string): OpenRouterKey | undefined {
+function getExistingKey(db: DatabaseType, userId: string): AIProviderKey | undefined {
   return db.prepare(
-    'SELECT * FROM openrouter_keys WHERE userId = ? AND disabled = 0 ORDER BY createdAt DESC LIMIT 1'
-  ).get(userId) as OpenRouterKey | undefined;
+    'SELECT * FROM ai_provider_keys WHERE userId = ? AND provider = ? AND disabled = 0 ORDER BY createdAt DESC LIMIT 1'
+  ).get(userId, 'openrouter') as AIProviderKey | undefined;
 }
 
 async function getOrCreateOpenRouterKey(
@@ -210,7 +238,7 @@ async function getOrCreateOpenRouterKey(
       }
       // Key doesn't exist on OpenRouter anymore, mark as disabled locally
       console.log(`[OpenRouter] Local key ${existingLocalKey.keyPrefix} no longer exists on OpenRouter`);
-      db.prepare('UPDATE openrouter_keys SET disabled = 1 WHERE keyHash = ?').run(existingLocalKey.keyHash);
+      db.prepare('UPDATE ai_provider_keys SET disabled = 1 WHERE keyHash = ?').run(existingLocalKey.keyHash);
     }
   }
 
@@ -223,12 +251,21 @@ async function getOrCreateOpenRouterKey(
     console.log(`[OpenRouter] Found existing API key on OpenRouter: ${email}`);
 
     // Save to local database if not already there
-    const localExists = db.prepare('SELECT 1 FROM openrouter_keys WHERE keyHash = ?').get(existingRemoteKey.hash);
+    const localExists = db.prepare('SELECT 1 FROM ai_provider_keys WHERE keyHash = ?').get(existingRemoteKey.hash);
     if (!localExists) {
       db.prepare(`
-        INSERT INTO openrouter_keys (userId, keyHash, keyPrefix, name, limitAmount, limitReset, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      `).run(userId, existingRemoteKey.hash, 'sk-or-v1-...', email, existingRemoteKey.limit || limit, existingRemoteKey.limitReset || 'monthly');
+        INSERT INTO ai_provider_keys (userId, provider, baseUrl, keyHash, keyPrefix, name, limitAmount, limitReset, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(
+        userId,
+        'openrouter',
+        'https://openrouter.ai/api/v1',
+        existingRemoteKey.hash,
+        'sk-or-v1-...',
+        email,
+        existingRemoteKey.limit || limit,
+        existingRemoteKey.limitReset || 'monthly'
+      );
     }
 
     return { key: null, hash: existingRemoteKey.hash, isNew: false };
@@ -247,9 +284,18 @@ async function getOrCreateOpenRouterKey(
 
   const keyPrefix = response.key.slice(0, 12) + '...';
   db.prepare(`
-    INSERT INTO openrouter_keys (userId, keyHash, keyPrefix, name, limitAmount, limitReset, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(userId, response.data.hash, keyPrefix, email, limit, 'monthly');
+    INSERT INTO ai_provider_keys (userId, provider, baseUrl, keyHash, keyPrefix, name, limitAmount, limitReset, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(
+    userId,
+    'openrouter',
+    'https://openrouter.ai/api/v1',
+    response.data.hash,
+    keyPrefix,
+    email,
+    limit,
+    'monthly'
+  );
 
   console.log(`[OpenRouter] API key created: ${keyPrefix}`);
 

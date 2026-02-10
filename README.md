@@ -40,14 +40,14 @@ This project packages OpenClaw to run in a [Cloudflare Sandbox](https://develope
 For deploying isolated instances for multiple users/organizations, use the multi-tenant deployment script:
 
 ```bash
-# Deploy a new tenant
-npm run deploy:tenant -- --tenant=alice
+# Interactive deployment with OpenRouter provisioning
+npm run deploy:tenant -- --email=user@example.com --name="User Name"
 
 # With custom instance type
-npm run deploy:tenant -- --tenant=alice --instance-type=standard-4
+npm run deploy:tenant -- --email=user@example.com --name="User Name" --instance-type=standard-4
 
 # Preview without deploying
-npm run deploy:tenant -- --tenant=alice --dry-run
+npm run deploy:tenant -- --email=user@example.com --name="User Name" --dry-run
 ```
 
 Each tenant gets completely isolated resources:
@@ -55,7 +55,28 @@ Each tenant gets completely isolated resources:
 - R2 Bucket: `moltbot-data-{tenant}`
 - Container: `moltbot-{tenant}`
 
-For detailed documentation, see [Multi-Tenant Deployment Guide](docs/multi-tenant-deployment.md).
+### User Management
+
+Manage users in the local database with the user management tool:
+
+```bash
+# Interactive menu
+npm run manage-users
+
+# List all users
+npm run manage-users -- list
+
+# View user details
+npm run manage-users -- show user@example.com
+
+# Create new user
+npm run manage-users -- create
+```
+
+For detailed documentation, see:
+- [Multi-Tenant Deployment Guide](docs/multi-tenant-deployment.md)
+- [User Management Guide](docs/user-management.md)
+- [OpenRouter Configuration](docs/openrouter/README.md)
 
 ## Quick Start
 
