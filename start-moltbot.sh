@@ -256,7 +256,7 @@ if (isOpenRouter) {
     config.agents.defaults.model.primary = 'openrouter/anthropic/claude-sonnet-4.5';
     config.agents.defaults.model.fallbacks = ['openrouter/anthropic/claude-haiku-3.5'];
 
-    console.log('OpenRouter configured with API key:', apiKey.substring(0, 20) + '...');
+    console.log('OpenRouter configured with API key:', process.env.OPENROUTER_API_KEY.substring(0, 20) + '...');
 } else if (isOpenAI) {
     // Create custom openai provider config with baseUrl override
     // Omit apiKey so moltbot falls back to OPENAI_API_KEY env var
