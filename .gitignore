@@ -12,6 +12,10 @@ wrangler.tenant-*.jsonc
 
 # Deployment records (per-tenant build tracking)
 .deployment-*.json
+deployments/
+
+# Test coverage reports
+coverage/
 
 # Database files (contains sensitive API keys and user data)
 *.db
