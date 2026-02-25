@@ -26,6 +26,7 @@ import * as crypto from 'crypto';
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { OpenRouter } from '@openrouter/sdk';
+import { configureDomain } from './configure-domain';
 
 // Track child processes for cleanup on exit
 const childProcesses: ChildProcess[] = [];
@@ -185,6 +186,24 @@ function getCloudflareAccountId(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Derive a valid DNS subdomain from user name
+ * - Converts to lowercase
+ * - Removes non-alphanumeric characters (no hyphens)
+ * - Limits to 63 characters (DNS label maximum)
+ *
+ * Examples:
+ *   "Alice Smith" → "alicesmith"
+ *   "Bob O'Connor" → "boboconnor"
+ *   "John123" → "john123"
+ */
+function deriveSubdomain(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')  // Remove all non-alphanumeric characters
+    .slice(0, 63);               // DNS label max length
 }
 
 /**
@@ -1039,6 +1058,36 @@ async function main(): Promise<void> {
       }
     }
 
+    // Step 2.5: Configure custom domain (after Worker deployment, before secrets)
+    let configuredDomain: string | undefined;
+    if (!config.dryRun && shouldDeployWorker) {
+      console.log('\n' + '-'.repeat(40));
+      console.log('Step 2.5: Configure Custom Domain');
+      console.log('-'.repeat(40));
+
+      try {
+        const subdomain = deriveSubdomain(config.name);
+        if (!subdomain) {
+          console.log('[Domain] Warning: Could not derive valid subdomain from name');
+          console.log('[Domain] Skipping custom domain configuration');
+        } else {
+          console.log(`[Domain] Configuring subdomain: ${subdomain}.tokenaissance.com`);
+          configuredDomain = await configureDomain(subdomain, {
+            workerTenantId: config.tenant,
+          });
+          console.log(`[Domain] ✓ Custom domain configured: https://${configuredDomain}`);
+        }
+      } catch (error) {
+        console.warn('[Domain] Failed to configure custom domain (non-fatal):');
+        console.warn(`  ${error instanceof Error ? error.message : String(error)}`);
+        console.log('\n[Domain] Manual configuration:');
+        console.log('  1. Go to Cloudflare Dashboard > Workers & Pages');
+        console.log(`  2. Select worker: ${workerName}`);
+        console.log('  3. Settings > Domains & Routes > Add Custom Domain');
+        console.log(`  4. Enter: ${subdomain || '<your-subdomain>'}.tokenaissance.com\n`);
+      }
+    }
+
     // Step 4: Interactive secret collection (after Worker deployment)
     console.log('\n' + '-'.repeat(40));
     console.log('Step 3: Configure Secrets');
@@ -1088,12 +1137,11 @@ async function main(): Promise<void> {
           }
         }
       } else {
-        // Secret doesn't exist, collect it normally
-        if (autoValue !== undefined) {
-          secrets[key] = autoValue;
-        } else {
-          secrets[key] = await promptFn();
-        }
+        // Secret doesn't exist, prompt user with auto-value as default if available
+        // This ensures transparency - user sees what's being set
+        const value = await promptFn();
+        // Use prompted value, or fall back to autoValue if user just pressed Enter
+        secrets[key] = value || autoValue || '';
       }
     }
 
@@ -1107,6 +1155,11 @@ async function main(): Promise<void> {
       // Secrets exist but we don't have a new key, still ask if user wants to update
       await collectSecret('AI_GATEWAY_API_KEY', async () => promptPassword(rl, 'AI_GATEWAY_API_KEY (press Enter to keep existing, or enter new key)'));
       await collectSecret('AI_GATEWAY_BASE_URL', async () => prompt(rl, 'AI_GATEWAY_BASE_URL (press Enter to keep existing, or enter new URL)', 'https://openrouter.ai/api/v1'));
+    } else if (!apiKey) {
+      // No API key auto-provisioned and no existing secrets - prompt for manual entry
+      console.log('[AI Gateway] No API key auto-provisioned. Please enter manually:');
+      await collectSecret('AI_GATEWAY_API_KEY', async () => promptPassword(rl, 'AI_GATEWAY_API_KEY (OpenRouter API key)'));
+      await collectSecret('AI_GATEWAY_BASE_URL', async () => prompt(rl, 'AI_GATEWAY_BASE_URL', 'https://openrouter.ai/api/v1'));
     }
 
     // Use gateway token from database
@@ -1181,6 +1234,7 @@ async function main(): Promise<void> {
       const existing = db.prepare('SELECT id FROM user_deployment_configs WHERE userId = ?').get(user.id);
 
       if (existing) {
+        // Preserve existing database values if user chose to keep them
         db.prepare(`
           UPDATE user_deployment_configs
           SET cfAccessTeamDomain = ?, cfAccessAud = ?,
@@ -1188,12 +1242,12 @@ async function main(): Promise<void> {
               sandboxSleepAfter = ?, updatedAt = ?
           WHERE userId = ?
         `).run(
-          secrets.CF_ACCESS_TEAM_DOMAIN || null,
-          secrets.CF_ACCESS_AUD || null,
-          secrets.R2_ACCESS_KEY_ID || null,
-          secrets.R2_SECRET_ACCESS_KEY || null,
-          secrets.CF_ACCOUNT_ID || null,
-          secrets.SANDBOX_SLEEP_AFTER || 'never',
+          secrets.CF_ACCESS_TEAM_DOMAIN ?? deploymentConfig?.cfAccessTeamDomain ?? null,
+          secrets.CF_ACCESS_AUD ?? deploymentConfig?.cfAccessAud ?? null,
+          secrets.R2_ACCESS_KEY_ID ?? deploymentConfig?.r2AccessKeyId ?? null,
+          secrets.R2_SECRET_ACCESS_KEY ?? deploymentConfig?.r2SecretAccessKey ?? null,
+          secrets.CF_ACCOUNT_ID ?? deploymentConfig?.cfAccountId ?? null,
+          secrets.SANDBOX_SLEEP_AFTER ?? deploymentConfig?.sandboxSleepAfter ?? 'never',
           now,
           user.id
         );
@@ -1242,6 +1296,9 @@ async function main(): Promise<void> {
     console.log('Deployment Complete!');
     console.log('='.repeat(60));
     console.log(`\nWorker URL: https://${workerName}.<your-subdomain>.workers.dev`);
+    if (configuredDomain) {
+      console.log(`Custom Domain: https://${configuredDomain}`);
+    }
     if (secrets.CLAWDBOT_GATEWAY_TOKEN) {
       console.log(`\nGateway Token (save this!): ${secrets.CLAWDBOT_GATEWAY_TOKEN}`);
     }
